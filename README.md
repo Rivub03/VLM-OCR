@@ -11,6 +11,14 @@ An internal, GPU-backed OCR application for printed JPEG, PNG, WEBP, and PDF doc
 
 The first start downloads the model and can take several minutes. The API is on port 8000 and the frontend is on port 3000.
 
+Before starting the stack, verify that Docker itself can reach the GPU (not just the host):
+
+```bash
+docker run --rm --gpus all nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-smi
+```
+
+If this fails, install/configure NVIDIA Container Toolkit on the host and restart Docker. The `inference` service explicitly requests all GPUs through Compose; it does not attempt CPU inference.
+
 ## Change model or serving engine
 
 The one model line in `docker-compose.yml` is:
@@ -48,4 +56,3 @@ For quality evaluation, store redacted pairs of `<name>.expected.json` and `<nam
 ## Security and retention
 
 FastAPI checks `X-API-Key` for every OCR/runtime route. The browser never receives that key. Input bytes are kept only in request memory, and results live in one process-local cache for one hour to support the direct job-result endpoint. Put the UI behind your internal network or a real reverse proxy before exposing it outside the organization.
-

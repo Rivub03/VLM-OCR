@@ -4,10 +4,17 @@ set -euo pipefail
 : "${OCR_MODEL_ID:?OCR_MODEL_ID must be set}"
 : "${OCR_VRAM_CAP_GIB:=18}"
 : "${OCR_MAX_NUM_SEQS:=4}"
-# nvidia-smi may report N/A during container startup; only use numeric values.
-total_mib="$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits | awk '{ for (i = 1; i <= NF; i++) if ($i ~ /^[0-9]+$/) { print $i; exit } }')"
+# Preserve the NVIDIA error text so host GPU-runtime failures are actionable.
+gpu_query="$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>&1)" || {
+  echo "GPU is not available inside the inference container." >&2
+  echo "Ensure Docker has NVIDIA Container Toolkit support, then run: docker run --rm --gpus all nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-smi" >&2
+  echo "nvidia-smi output: ${gpu_query}" >&2
+  exit 1
+}
+total_mib="$(printf '%s\n' "${gpu_query}" | awk '{ for (i = 1; i <= NF; i++) if ($i ~ /^[0-9]+$/) { print $i; exit } }')"
 if [[ -z "${total_mib}" ]]; then
-  echo "nvidia-smi did not return a numeric GPU memory.total value." >&2
+  echo "GPU is not available inside the inference container: nvidia-smi did not return numeric memory.total." >&2
+  echo "nvidia-smi output: ${gpu_query}" >&2
   exit 1
 fi
 memory_fraction="$(TOTAL_MIB="${total_mib}" CAP_GIB="${OCR_VRAM_CAP_GIB}" python3 -c 'import os
