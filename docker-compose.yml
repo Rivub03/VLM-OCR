@@ -10,6 +10,9 @@ services:
       # Change ONLY this line, then run: docker compose up -d --build inference
       OCR_MODEL_ID: datalab-to/surya-ocr-2 # alternative: dots-studio/dots.ocr
       OCR_VRAM_CAP_GIB: "18"
+      # GB10/DGX Spark has UMA rather than reportable framebuffer VRAM. Leave
+      # blank to derive the total from /proc/meminfo; set this only to override.
+      OCR_UMA_TOTAL_MEMORY_GIB: ""
       OCR_MAX_MODEL_LEN: "8192"
       OCR_MAX_NUM_SEQS: "4"
       HF_HOME: /models

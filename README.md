@@ -35,7 +35,7 @@ vLLM is the default. To use SGLang with the same FastAPI/frontend contract:
 docker compose -f docker-compose.yml -f docker-compose.sglang.yml up --build
 ```
 
-The default inference entrypoint calculates a vLLM model-executor fraction from `OCR_VRAM_CAP_GIB=18`; it reserves room for CUDA/driver overhead. Models that cannot fit fail during startup rather than silently loading a second model. Run `scripts/gpu-smoke-check.sh path/to/sample.png` after startup to verify end-to-end OCR and observed GPU use.
+The default inference entrypoint calculates a vLLM model-executor fraction from `OCR_VRAM_CAP_GIB=18`; it reserves room for CUDA/driver overhead. On discrete GPUs it uses reported framebuffer memory. On NVIDIA GB10/DGX Spark, `nvidia-smi` correctly reports `N/A` because CPU and GPU share unified memory; the launcher detects this and derives the fraction from `/proc/meminfo` (or from optional `OCR_UMA_TOTAL_MEMORY_GIB`). Run `scripts/gpu-smoke-check.sh path/to/sample.png` after startup to verify end-to-end OCR.
 
 ## API
 

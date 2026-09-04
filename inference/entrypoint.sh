@@ -3,23 +3,38 @@ set -euo pipefail
 
 : "${OCR_MODEL_ID:?OCR_MODEL_ID must be set}"
 : "${OCR_VRAM_CAP_GIB:=18}"
+: "${OCR_UMA_TOTAL_MEMORY_GIB:=}"
 : "${OCR_MAX_MODEL_LEN:=8192}"
 : "${OCR_MAX_NUM_SEQS:=4}"
 
-# Preserve the NVIDIA error text: an empty/N/A value normally means that the
-# container was started without a GPU device request or without the NVIDIA
-# Container Toolkit, not that the GPU has insufficient VRAM.
-gpu_query="$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>&1)" || {
+gpu_name="$(nvidia-smi --query-gpu=name --format=csv,noheader 2>&1)" || {
   echo "GPU is not available inside the inference container." >&2
   echo "Ensure Docker has NVIDIA Container Toolkit support, then run: docker run --rm --gpus all nvidia/cuda:12.4.1-base-ubuntu22.04 nvidia-smi" >&2
-  echo "nvidia-smi output: ${gpu_query}" >&2
+  echo "nvidia-smi output: ${gpu_name}" >&2
   exit 1
 }
+
+# GB10/DGX Spark is an integrated GPU with unified system memory. NVIDIA
+# intentionally returns N/A for memory.total there, even when CUDA is usable.
+gpu_query="$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>&1 || true)"
 total_mib="$(printf '%s\n' "${gpu_query}" | awk '{ for (i = 1; i <= NF; i++) if ($i ~ /^[0-9]+$/) { print $i; exit } }')"
+memory_source="nvidia-smi"
 if [[ -z "${total_mib}" ]]; then
-  echo "GPU is not available inside the inference container: nvidia-smi did not return numeric memory.total." >&2
-  echo "nvidia-smi output: ${gpu_query}" >&2
-  exit 1
+  memory_source="UMA system memory"
+  if [[ -n "${OCR_UMA_TOTAL_MEMORY_GIB}" ]]; then
+    if ! [[ "${OCR_UMA_TOTAL_MEMORY_GIB}" =~ ^[0-9]+$ ]]; then
+      echo "OCR_UMA_TOTAL_MEMORY_GIB must be a whole number of GiB." >&2
+      exit 1
+    fi
+    total_mib=$((OCR_UMA_TOTAL_MEMORY_GIB * 1024))
+  else
+    total_mib="$(awk '/MemTotal:/ { print int($2 / 1024); exit }' /proc/meminfo)"
+  fi
+  if [[ -z "${total_mib}" || "${total_mib}" -lt 4096 ]]; then
+    echo "Could not determine sufficient unified system memory for GPU ${gpu_name}." >&2
+    exit 1
+  fi
+  echo "GPU ${gpu_name} reports no dedicated VRAM; using ${total_mib} MiB unified system memory to derive the vLLM budget." >&2
 fi
 
 # vLLM reserves this fraction for the model executor (weights + KV cache).  Keep
@@ -33,7 +48,7 @@ if (( total_mib < 4096 )); then
   exit 1
 fi
 
-echo "Serving ${OCR_MODEL_ID} with vLLM; executor cap=${OCR_VRAM_CAP_GIB} GiB, GPU fraction=${gpu_fraction}"
+echo "Serving ${OCR_MODEL_ID} with vLLM on ${gpu_name}; executor cap=${OCR_VRAM_CAP_GIB} GiB, GPU fraction=${gpu_fraction}, memory source=${memory_source}"
 exec vllm serve "${OCR_MODEL_ID}" \
   --host 0.0.0.0 \
   --port 8000 \
