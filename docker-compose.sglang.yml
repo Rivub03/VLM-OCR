@@ -1,0 +1,7 @@
+# Start with: docker compose -f docker-compose.yml -f docker-compose.sglang.yml up --build
+# The frontend and API are unchanged; only the OpenAI-compatible inference server changes.
+services:
+  inference:
+    build:
+      context: ./inference
+      dockerfile: Dockerfile.sglang

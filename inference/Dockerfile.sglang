@@ -1,0 +1,6 @@
+FROM lmsysorg/sglang:latest
+
+COPY sglang-entrypoint.sh /opt/ocr/sglang-entrypoint.sh
+RUN chmod +x /opt/ocr/sglang-entrypoint.sh
+ENTRYPOINT ["/opt/ocr/sglang-entrypoint.sh"]
+

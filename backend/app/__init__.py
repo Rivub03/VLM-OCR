@@ -1,0 +1,2 @@
+"""Single-model OCR service."""
+

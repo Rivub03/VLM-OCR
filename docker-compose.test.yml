@@ -1,0 +1,11 @@
+# CPU-only smoke stack. Run: docker compose -f docker-compose.yml -f docker-compose.test.yml up --build
+services:
+  inference:
+    build:
+      context: ./inference/mock
+    image: single-model-ocr-mock
+    deploy:
+      resources:
+        reservations:
+          devices: []
+    ipc: private
