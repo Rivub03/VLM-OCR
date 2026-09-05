@@ -12,8 +12,12 @@ type Runtime = {
   max_upload_mib: number;
   max_pdf_pages: number;
 };
-type PageResult = { page_number: number; text: string; markdown: string; fields?: Record<string, unknown>; warnings: string[] };
-type OCRResult = { status: "completed"; result: PageResult[]; metadata: { request_id: string; model: string; serving_engine: string; page_count: number; elapsed_ms: number } };
+type LayoutBlock = { category: string; text: string; bbox?: number[] | null };
+type PageResult = {
+  page_number: number; text: string; markdown: string; fields?: Record<string, unknown>; warnings: string[];
+  layout?: LayoutBlock[] | null; field_confidence?: Record<string, number> | null; finish_reason?: string | null;
+};
+type OCRResult = { status: "completed"; result: PageResult[]; metadata: { request_id: string; model: string; serving_engine: string; page_count: number; elapsed_ms: number; image_tokens?: number | null; failed_pages?: number } };
 type JobResponse = { job_id: string; status: "queued" | "running" | "completed" | "failed" | "cancelled"; result?: OCRResult; error?: string; detail?: string };
 
 const NID_FRONT = JSON.stringify({
@@ -39,7 +43,8 @@ export default function Home() {
   const [copied, setCopied] = useState(false);
   const activeJob = useRef<string | null>(null);
   const cancelled = useRef(false);
-  const [tab, setTab] = useState<"text" | "markdown" | "json">("text");
+  const [tab, setTab] = useState<"text" | "markdown" | "layout" | "json">("text");
+  const hasLayout = !!result?.result.some(page => page.layout?.length);
 
   useEffect(() => {
     fetch("/api/runtime").then(async response => response.ok ? response.json() : null).then(setRuntime).catch(() => setRuntime(null));
@@ -110,6 +115,7 @@ export default function Home() {
     setError("OCR request cancelled.");
   };
   const combinedText = useMemo(() => result?.result.map(page => page.text).join("\n\n") ?? "", [result]);
+  const combinedMarkdown = useMemo(() => result?.result.map(page => page.markdown).join("\n\n") ?? "", [result]);
   const copyText = async () => {
     try {
       let didCopy = false;
@@ -136,7 +142,9 @@ export default function Home() {
   };
   const download = (extension: "txt" | "md" | "json") => {
     if (!result) return;
-    const content = extension === "json" ? JSON.stringify(result, null, 2) : combinedText;
+    // Markdown now carries real structure (headings, HTML tables, LaTeX), so a
+    // .md download should not quietly hand back the flattened plain text.
+    const content = extension === "json" ? JSON.stringify(result, null, 2) : extension === "md" ? combinedMarkdown : combinedText;
     const blob = new Blob([content], { type: extension === "json" ? "application/json" : "text/plain;charset=utf-8" });
     const url = URL.createObjectURL(blob); const link = document.createElement("a");
     link.href = url; link.download = `ocr-${result.metadata.request_id}.${extension}`; link.click(); URL.revokeObjectURL(url);
@@ -162,7 +170,7 @@ export default function Home() {
         </div>
         <div className="card result-card">
           <div className="section-heading"><div><p className="eyebrow">OUTPUT</p><h2>{result ? "Extraction complete" : "Waiting for a document"}</h2></div>{result && <div className="downloads"><button onClick={() => download("txt")}>.txt</button><button onClick={() => download("md")}>.md</button><button onClick={() => download("json")}>.json</button></div>}</div>
-          {!result ? <div className="empty"><span>⌁</span><strong>{processing ? "Reading your document" : "Results will appear here"}</strong><p>{processing ? "The server is processing each page once with bounded concurrency." : "Choose a document and begin extraction."}</p></div> : <><div className="tabs"><button className={tab === "text" ? "selected" : ""} onClick={() => setTab("text")}>Text</button><button className={tab === "markdown" ? "selected" : ""} onClick={() => setTab("markdown")}>Markdown</button><button className={tab === "json" ? "selected" : ""} onClick={() => setTab("json")}>JSON</button><button className="copy" onClick={copyText}>{copied ? "Copied" : "Copy"}</button></div><div className="result-body">{tab === "json" ? <pre>{JSON.stringify(result, null, 2)}</pre> : <>{result.result.map(page => <article className="page-result" key={page.page_number}><p className="page-label">PAGE {page.page_number}</p><pre>{tab === "text" ? page.text : page.markdown}</pre>{page.fields && <div className="fields"><p className="page-label">EXTRACTED FIELDS</p>{Object.entries(page.fields).map(([key, value]) => <div key={key}><span>{key.replaceAll("_", " ")}</span><strong>{String(value ?? "—")}</strong></div>)}</div>}{page.warnings.map(warning => <p className="warning" key={warning}>{warning}</p>)}</article>)}</>}</div><footer className="result-footer"><span>{result.metadata.model}</span><span>{result.metadata.page_count} page{result.metadata.page_count === 1 ? "" : "s"}</span><span>{formatMs(result.metadata.elapsed_ms)}</span></footer></>}
+          {!result ? <div className="empty"><span>⌁</span><strong>{processing ? "Reading your document" : "Results will appear here"}</strong><p>{processing ? "The server is processing each page once with bounded concurrency." : "Choose a document and begin extraction."}</p></div> : <><div className="tabs"><button className={tab === "text" ? "selected" : ""} onClick={() => setTab("text")}>Text</button><button className={tab === "markdown" ? "selected" : ""} onClick={() => setTab("markdown")}>Markdown</button>{hasLayout && <button className={tab === "layout" ? "selected" : ""} onClick={() => setTab("layout")}>Layout</button>}<button className={tab === "json" ? "selected" : ""} onClick={() => setTab("json")}>JSON</button><button className="copy" onClick={copyText}>{copied ? "Copied" : "Copy"}</button></div><div className="result-body">{tab === "json" ? <pre>{JSON.stringify(result, null, 2)}</pre> : <>{result.result.map(page => <article className="page-result" key={page.page_number}><p className="page-label">PAGE {page.page_number}</p>{tab === "layout" ? <div className="layout-blocks">{(page.layout ?? []).map((block, index) => <div className="layout-block" key={index}><span className={`chip chip-${block.category.toLowerCase().replace(/[^a-z]/g, "")}`}>{block.category}</span>{block.bbox && <small>[{block.bbox.map(value => Math.round(value)).join(", ")}]</small>}{block.text && <pre>{block.text}</pre>}</div>)}</div> : <pre>{tab === "text" ? page.text : page.markdown}</pre>}{page.fields && <div className="fields"><p className="page-label">EXTRACTED FIELDS</p>{Object.entries(page.fields).map(([key, value]) => { const score = page.field_confidence?.[key]; return <div key={key}><span>{key.replaceAll("_", " ")}</span><strong>{String(value ?? "—")}{score !== undefined && value !== null && <em className={score >= 0.85 ? "confident" : score >= 0.5 ? "likely" : "uncertain"}>{Math.round(score * 100)}%</em>}</strong></div>; })}</div>}{page.warnings.map(warning => <p className="warning" key={warning}>{warning}</p>)}</article>)}</>}</div><footer className="result-footer"><span>{result.metadata.model}</span><span>{result.metadata.page_count} page{result.metadata.page_count === 1 ? "" : "s"}</span><span>{formatMs(result.metadata.elapsed_ms)}</span></footer></>}
         </div>
       </section>
       <footer className="privacy">Uploaded source files are discarded after processing. Direct results remain in memory only for one hour and are cleared when the service restarts.</footer>

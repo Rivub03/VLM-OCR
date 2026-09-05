@@ -36,6 +36,7 @@ async def lifespan(app: FastAPI):
         yield
     finally:
         await app.state.jobs.shutdown()
+        await app.state.ocr.aclose()
 
 
 app = FastAPI(title="Single-Model OCR Service", version="1.0.0", lifespan=lifespan)
@@ -66,6 +67,10 @@ async def prepare_upload(file: UploadFile, mode: str, schema_raw: str | None) ->
     try:
         nid_options = NidPreprocessOptions(
             enabled=settings.nid_preprocess_enabled,
+            rectify=settings.nid_rectify_enabled,
+            illumination=settings.nid_illumination_enabled,
+            deskew=settings.nid_deskew_enabled,
+            target_long_edge=settings.nid_target_long_edge,
             min_short_edge=settings.nid_min_short_edge,
             max_upscale=settings.nid_max_upscale,
             border_px=settings.nid_border_px,
@@ -80,6 +85,10 @@ async def prepare_upload(file: UploadFile, mode: str, schema_raw: str | None) ->
             settings.max_page_dimension,
             nid_mode=mode.startswith("nid_"),
             nid_options=nid_options,
+            token_budget=settings.image_token_budget,
+            patch_size=settings.vision_patch_size,
+            merge_size=settings.vision_merge_size,
+            pdf_dpi=settings.max_pdf_dpi,
         )
     except DocumentError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
