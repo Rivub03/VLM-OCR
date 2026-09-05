@@ -41,7 +41,7 @@ NID_BACK_FIELDS = ("blood_group", "place_of_birth", "issue_date", "mrz_line1", "
 LABEL_PATTERNS: dict[str, str] = {
     "name": r"(?:(?<![A-Za-z])name|নাম)",
     "dob": r"(?:date\s*of\s*birth|dob|জন্ম\s*তারিখ)",
-    "nid_no": r"(?:(?:n[il1]d|nic|njd)\s*(?:no\.?|number)?|আইডি\s*নম্বর)",
+    "nid_no": r"(?:(?:n[il1]d|nic|njd|fid|nib)\s*(?:no\.?|number)?|আইডি\s*নম্বর)",
     "blood_group": r"(?:blood\s*group|bg|রক্তের\s*গ্রুপ)",
     "place_of_birth": r"(?:place\s*of\s*birth|birth\s*place|জন্মস্থান)",
     "issue_date": r"(?:issue\s*date|date\s*of\s*issue|প্রদানের\s*তারিখ)",
@@ -81,9 +81,12 @@ class NidExtraction:
 # Shared validators
 # --------------------------------------------------------------------------
 
+# Strings that are never a name on their own. Honorifics matter here: when the
+# model interleaves scripts, the Latin prefix of a name row can be just `MD` or
+# `MST`, and emitting that as the name is worse than emitting nothing.
 _NAME_LABEL_WORDS = re.compile(
     r"^(?:print|address|date\s*of\s*birth|dob|n[il1]d\s*no\.?|nic\s*no\.?|name|national\s*id\s*card"
-    r"|government|bangladesh|blood\s*group)$",
+    r"|government|bangladesh|blood\s*group|of\s+person|md|mst|most|mrs|ms|mis|mr)\.?$",
     re.IGNORECASE,
 )
 
@@ -190,11 +193,24 @@ def _label_value(lines: list[str], label: str, validator, *, key: str = "") -> s
             inline_value = inline_value[:next_label.start()]
         candidates = [_clean_label_value(inline_value)]
         for offset in (1, 2):
-            if index + offset < len(lines):
-                following = lines[index + offset]
-                if key == "name" and PARENT_LABEL.search(following):
+            if index + offset >= len(lines):
+                break
+            following = lines[index + offset]
+            if key == "name" and PARENT_LABEL.search(following):
+                # A bare `পিতা`/`মাতা` row is a stray label the model emitted out
+                # of order, and the cardholder's name can still follow it. Only
+                # a parent label that *carries* a value means the next value
+                # belongs to the parent, so stop there and nowhere else.
+                if english_name_prefix(re.sub(r"^.*?(?:পিতা|মাতা|father|mother)\s*[:ঃ]?\s*", "", following)):
                     break
-                candidates.append(_clean_label_value(following))
+                continue
+            candidates.append(_clean_label_value(following))
+        # Cards print the English name directly beneath the Bengali one, and the
+        # model sometimes emits the `Name` label after the value it belongs to.
+        if index > 0:
+            preceding = lines[index - 1]
+            if not (key == "name" and PARENT_LABEL.search(preceding)):
+                candidates.append(_clean_label_value(preceding))
         for candidate in candidates:
             if candidate and validator(candidate):
                 return candidate

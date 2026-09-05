@@ -101,6 +101,54 @@ def test_unresolved_fields_are_listed_for_reconciliation() -> None:
     assert extraction.confidence["dob"] == 0.0
 
 
+def test_label_variants_the_model_actually_produces_are_matched() -> None:
+    """`NID No.` comes back as `NIC No.`/`FID No` at card resolution.
+
+    Requiring a literal "NID" dropped the number entirely on most benchmark
+    cards. Widening a label is safe; the value still has to validate.
+    """
+    for label in ("NID No.", "NIC No", "FID No", "NlD No."):
+        extraction = extract_nid(f"{label} 102 707 5694", "nid_front")
+        assert extraction.fields["nid_no"] == "1027075694", label
+
+
+def test_bilingual_and_bengali_only_label_rows_are_matched() -> None:
+    """Cards are bilingual and a start anchor rejected every such row."""
+    assert extract_nid("নাম Name\nRUMA", "nid_front").fields["name"] == "RUMA"
+    assert extract_nid("নাম\nTAMANNA AKTER", "nid_front").fields["name"] == "TAMANNA AKTER"
+    assert extract_nid("নামঃ MUSA MIA", "nid_front").fields["name"] == "MUSA MIA"
+
+
+def test_a_run_on_row_is_sliced_at_the_next_label_and_script() -> None:
+    text = "National ID Card নং Name MD ALMAS নাম লেখ না Date of Birth 11 Feb 1983 NID No 281 643 1866"
+    assert extract_nid(text, "nid_front").fields == {
+        "name": "MD ALMAS", "dob": "11 Feb 1983", "nid_no": "2816431866",
+    }
+
+
+def test_a_value_printed_before_its_label_is_still_found() -> None:
+    """The model emits the `Name` label after its value on some cards."""
+    assert extract_nid("মাম\nMANWARA KHATUN\nName\nসিঠি", "nid_front").fields["name"] == "MANWARA KHATUN"
+
+
+def test_a_stray_parent_label_does_not_hide_the_cardholder() -> None:
+    """A bare `পিতা` row is a label the model emitted out of order."""
+    text = "নাম\nআছিয়া আক্তার\nName\nপিতা\nASIA AKTER\nমতা"
+    assert extract_nid(text, "nid_front").fields["name"] == "ASIA AKTER"
+
+
+def test_a_parent_label_carrying_a_value_still_stops_the_search() -> None:
+    """That value belongs to the parent, so nothing after it may be claimed."""
+    assert extract_nid("Name\nপিতা MD RAHIM\nMD KARIM", "nid_front").fields["name"] is None
+    assert extract_nid("নাম\nMD KARIM\nপিতার নাম\nMD RAHIM", "nid_front").fields["name"] == "MD KARIM"
+
+
+def test_a_bare_honorific_is_not_a_name() -> None:
+    """Interleaved scripts can leave `MD` as the Latin prefix of a name row."""
+    for fragment in ("MD", "MST.", "MOST", "of person"):
+        assert extract_nid(f"Name\n{fragment}\nমোহাম্মদ", "nid_front").fields["name"] is None, fragment
+
+
 def test_repeated_plain_text_output_is_truncated_for_every_model() -> None:
     """The guard used to run only on the HTML branch, so dots loops slipped past."""
     parsed = parse_response("\n".join(["National ID Card"] * 6))
