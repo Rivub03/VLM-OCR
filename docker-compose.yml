@@ -37,8 +37,11 @@ services:
       test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)\""]
       interval: 20s
       timeout: 5s
-      retries: 30
-      start_period: 120s
+      # dots.ocr can take several minutes to download custom code and load its
+      # weights on first use.  Treating that normal warm-up as unhealthy makes
+      # Compose stop the dependent API/frontend before vLLM can become ready.
+      retries: 60
+      start_period: 20m
 
   backend:
     build:
