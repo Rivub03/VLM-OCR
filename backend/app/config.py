@@ -43,6 +43,10 @@ class Settings(BaseSettings):
     # limit on dense ones, so identity cards use the plain OCR task. Enable this
     # only to reproduce that comparison.
     nid_layout_prompt_enabled: bool = False
+    # Last-resort name recovery from the card's fixed layout when no printed
+    # label anchored a candidate. Weaker evidence than a label, so it is opt-in
+    # and reported with a lower confidence and a distinct evidence source.
+    nid_name_structural_fallback: bool = False
     # Anti-repetition sampling, tuned per document kind rather than globally.
     #
     # Cards loop far more readily than documents. On the NID front train split,

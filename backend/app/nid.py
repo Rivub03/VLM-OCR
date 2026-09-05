@@ -61,6 +61,8 @@ FOLLOWING_LABEL = re.compile(
 
 CONFIDENCE_SPATIAL = 0.90
 CONFIDENCE_TEXTUAL = 0.75
+# Layout position rather than a printed label: weaker evidence, marked as such.
+CONFIDENCE_STRUCTURAL = 0.55
 CONFIDENCE_MRZ_VALID = 1.0
 CONFIDENCE_MRZ_REPAIRED = 0.85
 
@@ -217,6 +219,47 @@ def _label_value(lines: list[str], label: str, validator, *, key: str = "") -> s
     return None
 
 
+_HEADER_NOISE = re.compile(
+    r"(?:government|people|republic|bangladesh|national\s*id|card|date\s*of\s*birth|dob"
+    r"|n[il1]d|nic|fid|blood|place\s*of\s*birth|issue|name|print|address)",
+    re.IGNORECASE,
+)
+
+
+def structural_name(lines: list[str]) -> str | None:
+    """Last-resort name recovery from the card's fixed layout.
+
+    Used only when no label-anchored candidate validated. This is weaker
+    evidence than a label, so it is gated by `NID_NAME_STRUCTURAL_FALLBACK` and
+    constrained hard: the cardholder's English name is printed in capitals above
+    the date of birth, so only an all-caps Latin row in that region qualifies,
+    and the first one wins because a parent's name is always printed below it.
+
+    It stays inside the "no guessing" rule in one specific sense: the value must
+    still be present in the transcription and satisfy the same validator. It
+    does relax *where* the value may come from, which is why it is measured
+    separately and can be switched off.
+    """
+    limit = len(lines)
+    for index, line in enumerate(lines):
+        if re.search(r"date\s*of\s*birth|dob", line, re.IGNORECASE):
+            limit = index
+            break
+    for line in lines[:limit]:
+        candidate = _clean_label_value(line)
+        if not candidate or _HEADER_NOISE.search(candidate):
+            continue
+        # Card names are printed in capitals; requiring that rejects most of the
+        # model's prose and any stray lower-case artefact.
+        letters = [character for character in candidate if character.isalpha()]
+        if not letters or sum(1 for character in letters if character.isupper()) < len(letters):
+            continue
+        name = english_name_prefix(candidate)
+        if name and _valid_name(name) and " " in name:
+            return name
+    return None
+
+
 def _extract_mrz(lines: list[str]) -> list[str] | None:
     candidates = [re.sub(r"\s+", "", line) for line in lines]
     candidates = [line for line in candidates if re.fullmatch(r"[A-Z0-9<]{20,44}", line)]
@@ -298,7 +341,13 @@ def _spatial_field(blocks: list[LayoutBlockLike], key: str) -> tuple[str, Any] |
 # Public entry points
 # --------------------------------------------------------------------------
 
-def extract_nid(text: str, mode: str, layout: list[LayoutBlockLike] | None = None) -> NidExtraction:
+def extract_nid(
+    text: str,
+    mode: str,
+    layout: list[LayoutBlockLike] | None = None,
+    *,
+    structural_name_fallback: bool = False,
+) -> NidExtraction:
     """Extract the fixed NID key set for one side, with evidence and confidence."""
     lines = _lines(text)
     blocks = [block for block in (layout or []) if block.bbox] if layout else []
@@ -319,6 +368,13 @@ def extract_nid(text: str, mode: str, layout: list[LayoutBlockLike] | None = Non
             result.fields[key] = normalise_value(key, raw)
             result.confidence[key] = CONFIDENCE_TEXTUAL
             result.evidence[key] = {"source": "text", "line": raw}
+
+    if mode == "nid_front" and structural_name_fallback and not result.fields["name"]:
+        recovered = structural_name(lines)
+        if recovered:
+            result.fields["name"] = recovered
+            result.confidence["name"] = CONFIDENCE_STRUCTURAL
+            result.evidence["name"] = {"source": "structural", "line": recovered}
 
     if mode == "nid_back":
         mrz = parse_mrz(lines)

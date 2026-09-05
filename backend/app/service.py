@@ -138,7 +138,10 @@ class OCRService:
         if mode.startswith("nid_"):
             # NID fields are never accepted directly from a VLM JSON response.
             # Every emitted value must be located and validated in its raw OCR.
-            extraction = extract_nid(text, mode, parsed.layout)
+            extraction = extract_nid(
+                text, mode, parsed.layout,
+                structural_name_fallback=self.settings.nid_name_structural_fallback,
+            )
             extraction = await self._reconciler.reconcile(extraction, page, mode)
             fields, confidence, evidence = extraction.fields, extraction.confidence, extraction.evidence
             warnings.extend(extraction.warnings)

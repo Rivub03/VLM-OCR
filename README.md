@@ -47,7 +47,17 @@ GB10's CUDA memory view is not a reliable fraction of its shared 128 GiB RAM, so
 
 `POST /api/v1/ocr` accepts `file`, `mode` (`text`, `nid_front`, `nid_back`, or `schema`), and optional `schema`. It blocks only until bounded-concurrency processing completes, then returns page results and model/timing metadata. The browser uses `POST /api/v1/jobs`, which immediately returns a job ID and status. Poll `GET /api/v1/jobs/{id}` for `queued`, `running`, `completed`, `failed`, or `cancelled`; send `DELETE /api/v1/jobs/{id}` to cancel an in-flight request. Cancellation closes the backend request to the inference server and frees the application concurrency slot; no source file is retained.
 
-For NID mode, small camera images receive one configurable local enhancement pass—upscaling, a white border, LAB CLAHE, and mild sharpening—before the one permitted OCR request. General documents and PDFs retain standard normalization. NID structured output is intentionally limited to English fields: front `name`, `dob`, and `nid_no`; back `blood_group`, `place_of_birth`, `issue_date`, and three MRZ lines. Every field is derived from the returned transcription and is `null` with a warning when it cannot be validated; the service does not infer missing values.
+For NID mode, camera images receive one configurable local enhancement pass — card rectification, illumination flattening, deskew, upscaling, a white border, LAB CLAHE, and mild sharpening — before the one permitted OCR request. Each stage falls back to a pass-through with a warning rather than failing. General documents and PDFs retain standard normalization and are rasterized at `MAX_PDF_DPI`.
+
+NID structured output is intentionally limited to English fields: front `name`, `dob`, and `nid_no`; back `blood_group`, `place_of_birth`, `issue_date`, and three MRZ lines. Every field is derived from the returned transcription and is `null` with a warning when it cannot be validated; the service does not infer missing values. NID backs carry an ICAO TD1 MRZ whose check digits are verified and, where they single out one answer, repaired.
+
+Each page result also carries:
+
+- `layout` — blocks with `category` (`Title`, `Table`, `Picture`, `Formula`, …) and `text`, so tables and figures survive as structure rather than flattened prose. `markdown` keeps the model's HTML tables; `text` flattens them for reading.
+- `field_confidence` and `field_evidence` — per field, how well supported the value is and which stage produced it (`text`, `layout`, `mrz:valid`, `rapidocr`, …), so results can be triaged rather than trusted uniformly.
+- `finish_reason` — `length` means the model hit its output limit and the end of the page is missing.
+
+All three are additive; existing callers are unaffected.
 
 Compatibility routes from the reference service remain available: `/direct`, `/direct/base64`, `/v1/ocr/schema`, and `/v1/ocr/results/{id}`.
 

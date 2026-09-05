@@ -862,8 +862,8 @@ Note the spread: the same system scored 90.97% and 95.80% on identical inputs.
 Run-to-run variance of several points is normal here, so a small difference
 between two configurations is not a result.
 
-**What moved the number** (40-document subset unless stated, so 120 field
-comparisons — roughly 0.8 points per field):
+**What moved the number** (40-document subset, so 120 field comparisons —
+roughly 0.8 points per field — unless marked *full split*):
 
 | Change | Overall | Note |
 | --- | ---: | --- |
@@ -875,6 +875,30 @@ comparisons — roughly 0.8 points per field):
 | → **repetition penalty 1.30** | **90.8%** | Truncated pages → 0. Adopted. |
 | → repetition penalty 1.50 | 85.0% | Worse, and truncation returns (16/40). Not monotonic. |
 | penalty 1.30, preprocessing off | 87.5% | Preprocessing helps *once looping is fixed*. |
+| *full split*, all of the above | **86.8%** | 262 documents. The subset was optimistic by 4 points. |
+| *full split*, + name-row fixes | **87.5%** | name 76.3%, dob 93.5%, nid_no 92.8%. |
+
+**Current standing.** 87.5% against a baseline that ranged 91.0–95.8%. The
+remaining gap is roughly 5 points on `dob` and `nid_no` and 14 points on `name`.
+That is a real deficit against a two-model system and should be stated as such;
+the trade is ~8 GiB of VRAM against ~45 GiB, one model instead of two, and a
+result that is auditable field-by-field.
+
+Where the 98 remaining failures sit on the full split:
+
+| Bucket | Count | Nature |
+| --- | ---: | --- |
+| `missing` | 52 | No labelled candidate validated. The real remaining work. |
+| `different` | 16 | Model misread the name outright. |
+| `one_character` | 14 | Genuine single-character OCR errors. |
+| `punctuation_only` | 11 | **Ground-truth convention, not a defect.** |
+| `spacing_only` / `honorific_only` | 5 | Mostly convention. |
+
+The `punctuation_only` bucket is unwinnable and should not be optimised
+against: the ground truth is itself inconsistent about the honorific period,
+containing both `MST MONJELA KHATUN` and `MST. ROTNA KHATUN`. No parser
+satisfies both. The earlier benchmark's error lists show it losing the same
+cards, so the comparison remains fair.
 
 Findings worth keeping:
 

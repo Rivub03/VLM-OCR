@@ -18,6 +18,7 @@ def settings(**overrides) -> SimpleNamespace:
         upstream_retry_backoff_seconds=0.0,
         dots_layout_prompt_enabled=True,
         nid_layout_prompt_enabled=False,
+        nid_name_structural_fallback=False,
         repetition_penalty=1.05,
         nid_front_repetition_penalty=1.30,
         nid_back_repetition_penalty=1.05,
