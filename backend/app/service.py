@@ -73,6 +73,8 @@ class OCRService:
             # Every emitted value must be located and validated in its raw OCR.
             fields, field_warnings = extract_nid_fields(text, mode)
             warnings.extend(field_warnings)
+            if not text.strip():
+                warnings.append("The OCR model returned no transcription. Blank NID fields are supported, but no other card text was available to validate this page.")
             warnings.append("NID fields were derived from the single OCR transcription.")
         if mode == "schema" and profile.native_output == "html" and not fields:
             warnings.append("This model uses native HTML OCR; custom fields were derived deterministically from the single transcription.")

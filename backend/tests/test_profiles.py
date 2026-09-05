@@ -17,7 +17,9 @@ def test_schema_prompt_keeps_the_requested_schema() -> None:
 
 def test_dots_nid_uses_ocr_only_prompt() -> None:
     payload = make_payload("dots-studio/dots.ocr", "data:image/png;base64,AA==", "nid_front", None)
-    assert payload["messages"][0]["content"][0]["text"] == "Extract the text content from this image."
+    prompt = payload["messages"][0]["content"][0]["text"]
+    assert prompt.startswith("Extract the text content from this image.")
+    assert "blank" in prompt
 
 
 def test_completion_tokens_leave_context_room_for_images() -> None:

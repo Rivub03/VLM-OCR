@@ -26,6 +26,14 @@ SURYA_FULL_PAGE_PROMPT = "OCR this image to HTML. Each block is a div with data-
 SURYA_BLOCK_PROMPT = "OCR this block image to HTML."
 CHANDRA_OCR_PROMPT = "OCR this image to HTML."
 DOTS_TEXT_PROMPT = "Extract the text content from this image."
+# This retains Dots' documented OCR task sentence.  The additional sentence is
+# NID-specific: a blank printed value (particularly Blood Group) is legitimate
+# and must not make the model suppress the rest of a card's transcription.
+DOTS_NID_TRANSCRIPTION_PROMPT = (
+    "Extract the text content from this image. "
+    "Transcribe all visible printed text in reading order even when a labelled field is blank. "
+    "Do not invent a value for a blank field and do not return an empty response."
+)
 
 NID_FRONT_FIELDS = ("name", "dob", "nid_no")
 NID_BACK_FIELDS = ("blood_group", "place_of_birth", "issue_date", "mrz_line1", "mrz_line2", "mrz_line3")
@@ -63,7 +71,9 @@ def make_payload(model_id: str, image_data_url: str, mode: str, schema: dict[str
         # dots.ocr's documented prompt_ocr contract returns a faithful text
         # transcription.  NID fields are derived locally from that evidence;
         # requesting JSON directly has proven less reliable for these cards.
-        prompt = DOTS_TEXT_PROMPT if mode in {"text", "nid_front", "nid_back"} else _dots_structured_prompt(schema)
+        prompt = DOTS_NID_TRANSCRIPTION_PROMPT if mode.startswith("nid_") else (
+            DOTS_TEXT_PROMPT if mode == "text" else _dots_structured_prompt(schema)
+        )
     else:
         prompt = "Perform OCR on this printed document. Return all visible text in reading order as Markdown. Do not infer missing characters."
         if mode == "schema" and schema:

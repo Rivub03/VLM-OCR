@@ -77,15 +77,37 @@ def _lines(text: str) -> list[str]:
     return [re.sub(r"\s+", " ", line).strip() for line in text.translate(BN_TO_EN).splitlines() if line.strip()]
 
 
-def _label_value(lines: list[str], label: str, validator) -> str | None:
-    expression = re.compile(rf"^{label}\s*[:,-]?\s*(.*)$", re.IGNORECASE)
+def _clean_label_value(value: str) -> str:
+    """Remove harmless OCR/Markdown decoration without changing source text."""
+    return value.strip().strip("*`| ")
+
+
+def _label_value(lines: list[str], label: str, validator, *, allow_inline: bool = False) -> str | None:
+    """Return a validated value attached to a known English label only.
+
+    NID-back labels are printed on one horizontal row. When Blood Group is
+    blank, OCR may combine its label with Place of Birth and Issue Date.  The
+    inline variant separates those *known labels*, rather than searching for an
+    unlabelled value elsewhere on the card.
+    """
+    prefix = r"(?<![A-Za-z])" if allow_inline else r"^"
+    expression = re.compile(rf"{prefix}{label}\s*[:,-]?\s*(.*)$", re.IGNORECASE)
+    following_label = re.compile(
+        r"\b(?:blood\s*group|bg|place\s*of\s*birth|birth\s*place|issue\s*date|date\s*of\s*issue)\s*[:,-]",
+        re.IGNORECASE,
+    )
     for index, line in enumerate(lines):
         match = expression.search(line)
         if not match:
             continue
-        candidates = [match.group(1).strip()]
+        inline_value = match.group(1)
+        if allow_inline:
+            next_label = following_label.search(inline_value)
+            if next_label:
+                inline_value = inline_value[:next_label.start()]
+        candidates = [_clean_label_value(inline_value)]
         if index + 1 < len(lines):
-            candidates.append(lines[index + 1].strip())
+            candidates.append(_clean_label_value(lines[index + 1]))
         for candidate in candidates:
             if candidate and validator(candidate):
                 return candidate
@@ -131,10 +153,10 @@ def extract_nid_fields(text: str, mode: str) -> tuple[dict[str, Any], list[str]]
         if fields["nid_no"]:
             fields["nid_no"] = _extract_nid(fields["nid_no"])
     else:
-        blood = _label_value(lines, r"(?:blood\s*group|bg)", lambda value: bool(re.fullmatch(r"(?:A|B|AB|O)\s*[+-]", value, re.IGNORECASE)))
+        blood = _label_value(lines, r"(?:blood\s*group|bg)", lambda value: bool(re.fullmatch(r"(?:A|B|AB|O)\s*[+-]", value, re.IGNORECASE)), allow_inline=True)
         fields["blood_group"] = re.sub(r"\s+", "", blood).upper() if blood else None
-        fields["place_of_birth"] = _label_value(lines, r"(?:place\s*of\s*birth|birth\s*place)", _valid_name)
-        issue_date = _label_value(lines, r"(?:issue\s*date|date\s*of\s*issue)", lambda value: _extract_date(value) is not None)
+        fields["place_of_birth"] = _label_value(lines, r"(?:place\s*of\s*birth|birth\s*place)", _valid_name, allow_inline=True)
+        issue_date = _label_value(lines, r"(?:issue\s*date|date\s*of\s*issue)", lambda value: _extract_date(value) is not None, allow_inline=True)
         fields["issue_date"] = _extract_date(issue_date) if issue_date else None
         mrz = _extract_mrz(lines)
         if mrz:

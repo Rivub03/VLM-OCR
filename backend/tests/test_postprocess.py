@@ -63,6 +63,19 @@ HAQUE<<MD<IZAZUL<<<<<<<<<"""
     assert any("blood_group" in warning for warning in warnings)
 
 
+def test_blank_blood_group_on_a_shared_label_row_does_not_hide_other_back_fields() -> None:
+    text = """Blood Group:  Place of Birth: CHANDPUR  Issue Date: 16 Jan 2018
+I<BGD509688789<79<<<<<<<<<<
+8402013F3301155BGD<<<<<<<<<<2
+BEGUM<<RUZINA<<<<<<<<<<<<<<<<"""
+    fields, warnings = extract_nid_fields(text, "nid_back")
+    assert fields["blood_group"] is None
+    assert fields["place_of_birth"] == "CHANDPUR"
+    assert fields["issue_date"] == "16 Jan 2018"
+    assert fields["mrz_line1"] == "I<BGD509688789<79<<<<<<<<<<"
+    assert any("blood_group" in warning for warning in warnings)
+
+
 def test_invalid_mrz_is_not_emitted() -> None:
     fields, warnings = extract_nid_fields("Place of Birth: JHENAIDAH\nABCD<INVALID", "nid_back")
     assert fields["mrz_line1"] is None
