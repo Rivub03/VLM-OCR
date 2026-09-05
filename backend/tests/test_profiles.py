@@ -11,4 +11,11 @@ def test_schema_prompt_keeps_the_requested_schema() -> None:
     text = payload["messages"][0]["content"][0]["text"]
     assert "invoice_no" in text
     assert payload["temperature"] == 0.0
+    assert payload["max_tokens"] == 768
 
+
+def test_completion_tokens_leave_context_room_for_images() -> None:
+    text_payload = make_payload("datalab-to/surya-ocr-2", "data:image/png;base64,AA==", "text", None)
+    nid_payload = make_payload("datalab-to/surya-ocr-2", "data:image/png;base64,AA==", "nid_front", None)
+    assert text_payload["max_tokens"] == 1536
+    assert nid_payload["max_tokens"] == 768

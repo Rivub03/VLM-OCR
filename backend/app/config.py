@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     max_inference_concurrency: int = 4
     max_upload_mib: int = 25
     max_pdf_pages: int = 20
-    max_page_dimension: int = 4096
+    max_page_dimension: int = 2048
     result_ttl_seconds: int = 3600
     upstream_timeout_seconds: float = 120.0
 
@@ -19,4 +19,3 @@ class Settings(BaseSettings):
 @lru_cache
 def get_settings() -> Settings:
     return Settings()
-

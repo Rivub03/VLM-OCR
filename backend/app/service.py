@@ -14,7 +14,9 @@ from .schemas import OCRMetadata, OCRResult, PageResult
 
 
 class UpstreamError(RuntimeError):
-    pass
+    def __init__(self, message: str, status_code: int = 503):
+        super().__init__(message)
+        self.status_code = status_code
 
 
 @dataclass
@@ -49,6 +51,14 @@ class OCRService:
                     response.raise_for_status()
             except httpx.TimeoutException as exc:
                 raise UpstreamError("The OCR inference server timed out.") from exc
+            except httpx.HTTPStatusError as exc:
+                detail = exc.response.text.strip().replace("\n", " ")[:500]
+                if 400 <= exc.response.status_code < 500:
+                    raise UpstreamError(
+                        f"The OCR inference server rejected the request: {detail or 'invalid inference request.'}",
+                        status_code=422,
+                    ) from exc
+                raise UpstreamError("The OCR inference server failed while processing the request.") from exc
             except httpx.HTTPError as exc:
                 raise UpstreamError("The OCR inference server rejected the request.") from exc
         try:
@@ -73,4 +83,3 @@ class OCRService:
             elapsed_ms=round((time.perf_counter() - started) * 1000),
         )
         return OCRResult(result=results, metadata=metadata)
-

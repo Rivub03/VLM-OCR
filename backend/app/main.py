@@ -66,7 +66,7 @@ async def process_upload(file: UploadFile, mode: str, schema_raw: str | None, re
     try:
         result = await request.app.state.ocr.process(request_id, pages, mode, schema)
     except UpstreamError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        raise HTTPException(status_code=exc.status_code, detail=str(exc)) from exc
     request.app.state.results.put(request_id, result)
     return request_id, result
 
@@ -161,4 +161,3 @@ async def legacy_result(request: Request, job_id: str) -> dict:
     if not result:
         return {"status": "expired", "result": None}
     return {"status": "completed", "result": result.model_dump()}
-

@@ -18,6 +18,14 @@ def test_image_is_normalised_to_png() -> None:
     assert pages[0].content.startswith(b"\x89PNG")
 
 
+def test_image_is_downscaled_to_dimension_limit() -> None:
+    output = io.BytesIO()
+    Image.new("RGB", (4000, 1000), "white").save(output, format="PNG")
+    pages = render_document(output.getvalue(), "image/png", max_pages=2, max_dimension=2048)
+    with Image.open(io.BytesIO(pages[0].content)) as result:
+        assert result.size == (2048, 512)
+
+
 def test_pdf_is_rasterized_per_page() -> None:
     document = fitz.open()
     document.new_page()
@@ -36,4 +44,3 @@ def test_pdf_page_limit_is_enforced() -> None:
         assert "limited" in str(exc)
     else:
         raise AssertionError("Expected a page-limit error")
-
