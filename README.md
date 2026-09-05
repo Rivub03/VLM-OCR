@@ -35,7 +35,9 @@ vLLM is the default. To use SGLang with the same FastAPI/frontend contract:
 docker compose -f docker-compose.yml -f docker-compose.sglang.yml up --build
 ```
 
-The default inference entrypoint calculates a vLLM model-executor fraction from `OCR_VRAM_CAP_GIB=18`; it reserves room for CUDA/driver overhead. On discrete GPUs it uses reported framebuffer memory. On NVIDIA GB10/DGX Spark, `nvidia-smi` correctly reports `N/A` because CPU and GPU share unified memory; the launcher detects this and derives the fraction from `/proc/meminfo` (or from optional `OCR_UMA_TOTAL_MEMORY_GIB`). Run `scripts/gpu-smoke-check.sh path/to/sample.png` after startup to verify end-to-end OCR.
+The default inference entrypoint calculates a vLLM model-executor fraction from `OCR_VRAM_CAP_GIB=18`; it reserves room for CUDA/driver overhead. On discrete GPUs it uses reported framebuffer memory. On NVIDIA GB10/DGX Spark, `nvidia-smi` correctly reports `N/A` because CPU and GPU share unified memory; the launcher detects this and derives the fraction from `/proc/meminfo` (or from optional `OCR_UMA_TOTAL_MEMORY_GIB`).
+
+GB10's CUDA memory view is not a reliable fraction of its shared 128 GiB RAM, so the default also sets an explicit `OCR_KV_CACHE_MIB=4096` and uses eager execution. vLLM skips automatic cache sizing when this setting is present, avoiding a negative-cache startup failure while bounding the persistent cache to 4 GiB. The 18 GiB setting remains a target, not a strict hardware-enforced total on UMA. For more throughput after a stable deployment, increase `OCR_KV_CACHE_MIB` and `OCR_MAX_NUM_SEQS` gradually and measure memory pressure. Run `scripts/gpu-smoke-check.sh path/to/sample.png` after startup to verify end-to-end OCR.
 
 ## API
 

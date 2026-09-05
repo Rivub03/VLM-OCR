@@ -4,8 +4,19 @@ set -euo pipefail
 : "${OCR_MODEL_ID:?OCR_MODEL_ID must be set}"
 : "${OCR_VRAM_CAP_GIB:=18}"
 : "${OCR_UMA_TOTAL_MEMORY_GIB:=}"
+: "${OCR_KV_CACHE_MIB:=4096}"
+: "${OCR_ENFORCE_EAGER:=true}"
 : "${OCR_MAX_MODEL_LEN:=8192}"
 : "${OCR_MAX_NUM_SEQS:=4}"
+
+if ! [[ "${OCR_KV_CACHE_MIB}" =~ ^[0-9]+$ ]] || (( OCR_KV_CACHE_MIB < 256 )); then
+  echo "OCR_KV_CACHE_MIB must be a whole number of at least 256 MiB." >&2
+  exit 1
+fi
+if [[ "${OCR_ENFORCE_EAGER}" != "true" && "${OCR_ENFORCE_EAGER}" != "false" ]]; then
+  echo "OCR_ENFORCE_EAGER must be true or false." >&2
+  exit 1
+fi
 
 gpu_name="$(nvidia-smi --query-gpu=name --format=csv,noheader 2>&1)" || {
   echo "GPU is not available inside the inference container." >&2
@@ -48,15 +59,24 @@ if (( total_mib < 4096 )); then
   exit 1
 fi
 
-echo "Serving ${OCR_MODEL_ID} with vLLM on ${gpu_name}; executor cap=${OCR_VRAM_CAP_GIB} GiB, GPU fraction=${gpu_fraction}, memory source=${memory_source}"
-exec vllm serve "${OCR_MODEL_ID}" \
-  --host 0.0.0.0 \
-  --port 8000 \
-  --served-model-name "${OCR_MODEL_ID}" \
-  --trust-remote-code \
-  --dtype auto \
-  --gpu-memory-utilization "${gpu_fraction}" \
-  --max-model-len "${OCR_MAX_MODEL_LEN}" \
-  --max-num-seqs "${OCR_MAX_NUM_SEQS}" \
-  --max-num-batched-tokens "${OCR_MAX_MODEL_LEN}" \
+echo "Serving ${OCR_MODEL_ID} with vLLM on ${gpu_name}; KV cache=${OCR_KV_CACHE_MIB} MiB, GPU fraction=${gpu_fraction} (ignored with explicit cache), memory source=${memory_source}"
+
+vllm_args=(
+  serve "${OCR_MODEL_ID}"
+  --host 0.0.0.0
+  --port 8000
+  --served-model-name "${OCR_MODEL_ID}"
+  --trust-remote-code
+  --dtype auto
+  --gpu-memory-utilization "${gpu_fraction}"
+  --kv-cache-memory-bytes "$((OCR_KV_CACHE_MIB * 1024 * 1024))"
+  --max-model-len "${OCR_MAX_MODEL_LEN}"
+  --max-num-seqs "${OCR_MAX_NUM_SEQS}"
+  --max-num-batched-tokens "${OCR_MAX_MODEL_LEN}"
   --limit-mm-per-prompt '{"image": 1}'
+)
+if [[ "${OCR_ENFORCE_EAGER}" == "true" ]]; then
+  vllm_args+=(--enforce-eager)
+fi
+
+exec vllm "${vllm_args[@]}"

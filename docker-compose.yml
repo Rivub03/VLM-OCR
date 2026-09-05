@@ -13,8 +13,12 @@ services:
       # GB10/DGX Spark has UMA rather than reportable framebuffer VRAM. Leave
       # blank to derive the total from /proc/meminfo; set this only to override.
       OCR_UMA_TOTAL_MEMORY_GIB: ""
-      OCR_MAX_MODEL_LEN: "8192"
-      OCR_MAX_NUM_SEQS: "4"
+      # Explicitly bound persistent cache allocation. This avoids vLLM's
+      # inaccurate automatic cache sizing on GB10 unified-memory systems.
+      OCR_KV_CACHE_MIB: "4096"
+      OCR_ENFORCE_EAGER: "true"
+      OCR_MAX_MODEL_LEN: "4096"
+      OCR_MAX_NUM_SEQS: "2"
       HF_HOME: /models
       HUGGINGFACE_HUB_CACHE: /models/hub
       NVIDIA_VISIBLE_DEVICES: all
@@ -43,7 +47,7 @@ services:
       OCR_API_KEY: ${OCR_API_KEY:?set OCR_API_KEY in .env}
       FRONTEND_ORIGIN: ${FRONTEND_ORIGIN:-http://localhost:3000}
       INFERENCE_BASE_URL: http://inference:8000
-      MAX_INFERENCE_CONCURRENCY: "4"
+      MAX_INFERENCE_CONCURRENCY: "2"
       MAX_UPLOAD_MIB: "25"
       MAX_PDF_PAGES: "20"
       RESULT_TTL_SECONDS: "3600"
