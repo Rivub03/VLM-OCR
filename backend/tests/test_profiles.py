@@ -19,7 +19,7 @@ def test_completion_tokens_leave_context_room_for_images() -> None:
     text_payload = make_payload("datalab-to/surya-ocr-2", "data:image/png;base64,AA==", "text", None)
     nid_payload = make_payload("datalab-to/surya-ocr-2", "data:image/png;base64,AA==", "nid_front", None)
     assert text_payload["max_tokens"] == 2048
-    assert nid_payload["max_tokens"] == 1536
+    assert nid_payload["max_tokens"] == 1024
 
 
 def test_native_html_models_use_documented_ocr_prompts() -> None:

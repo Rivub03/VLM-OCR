@@ -41,7 +41,9 @@ GB10's CUDA memory view is not a reliable fraction of its shared 128 GiB RAM, so
 
 ## API
 
-`POST /api/v1/ocr` accepts `file`, `mode` (`text`, `nid_front`, `nid_back`, or `schema`), and optional `schema`. It blocks only until bounded-concurrency processing completes, then returns page results and model/timing metadata. `POST /api/v1/jobs` is a direct alias that returns a completed request ID. `GET /api/v1/jobs/{id}` reads a process-local result cache for one hour; it is not durable and clears on restart.
+`POST /api/v1/ocr` accepts `file`, `mode` (`text`, `nid_front`, `nid_back`, or `schema`), and optional `schema`. It blocks only until bounded-concurrency processing completes, then returns page results and model/timing metadata. The browser uses `POST /api/v1/jobs`, which immediately returns a job ID and status. Poll `GET /api/v1/jobs/{id}` for `queued`, `running`, `completed`, `failed`, or `cancelled`; send `DELETE /api/v1/jobs/{id}` to cancel an in-flight request. Cancellation closes the backend request to the inference server and frees the application concurrency slot; no source file is retained.
+
+For NID mode, small camera images are upscaled (up to 4×) before the one permitted OCR pass so the vision encoder receives legible character detail. Decoder output that starts looping is trimmed and marked with a warning rather than triggering a second inference. Upscaling cannot recover text that is absent from a very blurred or heavily compressed original: a close, in-focus image whose card fills most of the frame remains important for Bengali fields.
 
 Compatibility routes from the reference service remain available: `/direct`, `/direct/base64`, `/v1/ocr/schema`, and `/v1/ocr/results/{id}`.
 

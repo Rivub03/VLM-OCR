@@ -10,6 +10,7 @@ from fastapi.responses import JSONResponse
 
 from .cache import ResultCache
 from .config import Settings, get_settings
+from .jobs import JobManager
 from .preprocess import DocumentError, render_document
 from .profiles import profile_for
 from .schemas import JobResponse, OCRResult, RuntimeResponse
@@ -30,7 +31,11 @@ async def lifespan(app: FastAPI):
     settings = get_settings()
     app.state.ocr = OCRService(settings)
     app.state.results = ResultCache(settings.result_ttl_seconds)
-    yield
+    app.state.jobs = JobManager(app.state.results)
+    try:
+        yield
+    finally:
+        await app.state.jobs.shutdown()
 
 
 app = FastAPI(title="Single-Model OCR Service", version="1.0.0", lifespan=lifespan)
@@ -38,12 +43,12 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[get_settings().frontend_origin],
     allow_credentials=False,
-    allow_methods=["GET", "POST"],
+    allow_methods=["GET", "POST", "DELETE"],
     allow_headers=["X-API-Key", "Content-Type"],
 )
 
 
-async def process_upload(file: UploadFile, mode: str, schema_raw: str | None, request: Request) -> tuple[str, OCRResult]:
+async def prepare_upload(file: UploadFile, mode: str, schema_raw: str | None) -> tuple[str, list, dict | None]:
     settings = get_settings()
     content = await file.read()
     if len(content) > settings.max_upload_mib * 1024 * 1024:
@@ -59,10 +64,21 @@ async def process_upload(file: UploadFile, mode: str, schema_raw: str | None, re
         if not isinstance(schema, dict):
             raise HTTPException(status_code=422, detail="The extraction schema must be a JSON object.")
     try:
-        pages = render_document(content, file.content_type, settings.max_pdf_pages, settings.max_page_dimension)
+        pages = render_document(
+            content,
+            file.content_type,
+            settings.max_pdf_pages,
+            settings.max_page_dimension,
+            nid_mode=mode.startswith("nid_"),
+        )
     except DocumentError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     request_id = str(uuid.uuid4())
+    return request_id, pages, schema
+
+
+async def process_upload(file: UploadFile, mode: str, schema_raw: str | None, request: Request) -> tuple[str, OCRResult]:
+    request_id, pages, schema = await prepare_upload(file, mode, schema_raw)
     try:
         result = await request.app.state.ocr.process(request_id, pages, mode, schema)
     except UpstreamError as exc:
@@ -105,22 +121,34 @@ async def ocr(
 
 
 @app.post("/api/v1/jobs", response_model=JobResponse, dependencies=[Depends(require_api_key)])
-async def direct_job(
+async def create_job(
     request: Request,
     file: UploadFile = File(...),
     mode: str = Form("text", pattern="^(text|nid_front|nid_back|schema)$"),
     schema: str | None = Form(default=None),
 ) -> JobResponse:
-    job_id, result = await process_upload(file, mode, schema, request)
-    return JobResponse(job_id=job_id, result=result)
+    job_id, pages, schema_object = await prepare_upload(file, mode, schema)
+
+    async def work() -> OCRResult:
+        return await request.app.state.ocr.process(job_id, pages, mode, schema_object)
+
+    return request.app.state.jobs.start(job_id, work)
 
 
 @app.get("/api/v1/jobs/{job_id}", response_model=JobResponse, dependencies=[Depends(require_api_key)])
 async def get_job(request: Request, job_id: str) -> JobResponse:
-    result = request.app.state.results.get(job_id)
-    if not result:
-        raise HTTPException(status_code=404, detail="Result not found or expired. Direct results are not persisted across restarts.")
-    return JobResponse(job_id=job_id, result=result)
+    try:
+        return request.app.state.jobs.response(job_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Job not found or expired. Jobs are not persisted across restarts.") from exc
+
+
+@app.delete("/api/v1/jobs/{job_id}", response_model=JobResponse, dependencies=[Depends(require_api_key)])
+async def cancel_job(request: Request, job_id: str) -> JobResponse:
+    try:
+        return request.app.state.jobs.cancel(job_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail="Job not found or expired.") from exc
 
 
 # Compatibility adapters for the supplied service's public routes.
@@ -152,7 +180,7 @@ async def legacy_base64(request: Request, body: dict) -> JSONResponse:
 async def legacy_schema(request: Request, file: UploadFile = File(...), schema: str | None = Form(default=None)) -> JobResponse:
     mode = "schema" if schema else "text"
     job_id, result = await process_upload(file, mode, schema, request)
-    return JobResponse(job_id=job_id, result=result)
+    return JobResponse(job_id=job_id, status="completed", result=result)
 
 
 @app.get("/v1/ocr/results/{job_id}", dependencies=[Depends(require_api_key)])

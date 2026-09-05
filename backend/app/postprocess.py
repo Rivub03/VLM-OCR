@@ -26,10 +26,32 @@ def html_to_markdown(value: str) -> str:
     return "\n".join(line for line in lines if line).strip()
 
 
+def truncate_repeated_output(value: str) -> tuple[str, bool]:
+    """Cut a decoder loop without issuing another OCR request.
+
+    Surya occasionally repeats an HTML/text block until its token limit on
+    degraded card photographs. Keeping the first occurrence is more useful
+    than returning thousands of duplicate lines to the caller.
+    """
+    lines = value.splitlines()
+    seen: dict[str, int] = {}
+    kept: list[str] = []
+    for line in lines:
+        key = re.sub(r"\s+", " ", line).strip()
+        if key and seen.get(key, 0) >= 2:
+            return "\n".join(kept).strip(), True
+        if key:
+            seen[key] = seen.get(key, 0) + 1
+        kept.append(line)
+    return value, False
+
+
 def parse_response(value: str) -> tuple[str, dict[str, Any] | None, list[str]]:
     clean = _strip_fences(value)
     if re.search(r"<(?:div|p|table|h[1-6])\b", clean, flags=re.IGNORECASE):
-        return html_to_markdown(clean), None, []
+        text, truncated = truncate_repeated_output(html_to_markdown(clean))
+        warnings = ["The OCR decoder started repeating content; duplicate output was removed. A sharper, closer NID photo may improve accuracy."] if truncated else []
+        return text, None, warnings
     try:
         decoded = json.loads(clean)
     except json.JSONDecodeError:

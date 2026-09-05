@@ -24,3 +24,11 @@ def test_native_html_ocr_is_converted_to_readable_text() -> None:
     assert text == "Hello\nWorld"
     assert fields is None
     assert warnings == []
+
+
+def test_repeated_native_ocr_output_is_trimmed_with_a_warning() -> None:
+    content = "".join('<div><p>National ID Card</p></div>' for _ in range(4))
+    text, fields, warnings = parse_response(content)
+    assert text == "National ID Card\nNational ID Card"
+    assert fields is None
+    assert warnings

@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeEvent, DragEvent, useEffect, useMemo, useState } from "react";
+import { ChangeEvent, DragEvent, useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 
 type Mode = "text" | "nid_front" | "nid_back" | "schema";
@@ -14,6 +14,7 @@ type Runtime = {
 };
 type PageResult = { page_number: number; text: string; markdown: string; fields?: Record<string, unknown>; warnings: string[] };
 type OCRResult = { status: "completed"; result: PageResult[]; metadata: { request_id: string; model: string; serving_engine: string; page_count: number; elapsed_ms: number } };
+type JobResponse = { job_id: string; status: "queued" | "running" | "completed" | "failed" | "cancelled"; result?: OCRResult; error?: string; detail?: string };
 
 const NID_FRONT = JSON.stringify({
   name: "Full name in English", name_bn: "Full name in Bangla", father_name: "Father's name", mother_name: "Mother's name", dob: "Date of birth", nid_no: "NID number",
@@ -35,6 +36,8 @@ export default function Home() {
   const [runtime, setRuntime] = useState<Runtime | null>(null);
   const [error, setError] = useState("");
   const [processing, setProcessing] = useState(false);
+  const activeJob = useRef<string | null>(null);
+  const cancelled = useRef(false);
   const [tab, setTab] = useState<"text" | "markdown" | "json">("text");
 
   useEffect(() => {
@@ -68,18 +71,42 @@ export default function Home() {
       try { if (!schema.trim() || typeof JSON.parse(schema) !== "object") throw new Error(); }
       catch { setError("Custom extraction needs a valid JSON object."); return; }
     }
-    setProcessing(true); setResult(null); setError("");
+    cancelled.current = false; setProcessing(true); setResult(null); setError("");
     const body = new FormData();
     body.set("file", file); body.set("mode", mode);
     if (mode === "schema") body.set("schema", schema);
     try {
-      const response = await fetch("/api/ocr", { method: "POST", body });
-      const payload = await response.json();
+      const response = await fetch("/api/jobs", { method: "POST", body });
+      const payload = await response.json() as JobResponse;
       if (!response.ok) throw new Error(payload.detail || "OCR could not process the document.");
-      setResult(payload as OCRResult);
+      activeJob.current = payload.job_id;
+      if (cancelled.current) {
+        await fetch(`/api/jobs/${encodeURIComponent(payload.job_id)}`, { method: "DELETE" });
+        return;
+      }
+      while (!cancelled.current) {
+        await new Promise(resolve => window.setTimeout(resolve, 750));
+        const statusResponse = await fetch(`/api/jobs/${encodeURIComponent(payload.job_id)}`, { cache: "no-store" });
+        const status = await statusResponse.json() as JobResponse;
+        if (!statusResponse.ok) throw new Error(status.detail || "Unable to read OCR job status.");
+        if (status.status === "completed" && status.result) { setResult(status.result); break; }
+        if (status.status === "failed") throw new Error(status.error || "OCR could not process the document.");
+        if (status.status === "cancelled") break;
+      }
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "OCR request failed.");
-    } finally { setProcessing(false); }
+    } finally { activeJob.current = null; setProcessing(false); }
+  };
+  const cancel = async () => {
+    cancelled.current = true;
+    const jobId = activeJob.current;
+    if (jobId) {
+      try { await fetch(`/api/jobs/${encodeURIComponent(jobId)}`, { method: "DELETE" }); }
+      catch { /* The interface can still return to idle if the cancel response is lost. */ }
+    }
+    activeJob.current = null;
+    setProcessing(false);
+    setError("OCR request cancelled.");
   };
   const combinedText = useMemo(() => result?.result.map(page => page.text).join("\n\n") ?? "", [result]);
   const download = (extension: "txt" | "md" | "json") => {
@@ -106,7 +133,7 @@ export default function Home() {
           <fieldset><legend>Extraction mode</legend><div className="mode-grid"><button className={mode === "text" ? "active" : ""} onClick={() => setMode("text")}>Text & layout</button><button className={mode === "nid_front" ? "active" : ""} onClick={() => setPreset("nid_front")}>NID front</button><button className={mode === "nid_back" ? "active" : ""} onClick={() => setPreset("nid_back")}>NID back</button><button className={mode === "schema" ? "active" : ""} onClick={() => setMode("schema")}>Custom JSON</button></div></fieldset>
           {(mode === "schema" || mode.startsWith("nid_")) && <label className="schema-label">{mode === "schema" ? "Custom extraction schema" : "Preset NID fields"}<textarea value={schema} onChange={event => setSchema(event.target.value)} readOnly={mode.startsWith("nid_")} spellCheck={false} /></label>}
           {error && <p className="error">{error}</p>}
-          <button className="primary" disabled={!file || processing} onClick={submit}>{processing ? "Extracting…" : "Start extraction"}<span>→</span></button>
+          {processing ? <button className="primary" onClick={cancel}>Cancel extraction<span>×</span></button> : <button className="primary" disabled={!file} onClick={submit}>Start extraction<span>→</span></button>}
         </div>
         <div className="card result-card">
           <div className="section-heading"><div><p className="eyebrow">OUTPUT</p><h2>{result ? "Extraction complete" : "Waiting for a document"}</h2></div>{result && <div className="downloads"><button onClick={() => download("txt")}>.txt</button><button onClick={() => download("md")}>.md</button><button onClick={() => download("json")}>.json</button></div>}</div>

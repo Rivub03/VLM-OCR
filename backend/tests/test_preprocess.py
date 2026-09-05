@@ -26,6 +26,14 @@ def test_image_is_downscaled_to_dimension_limit() -> None:
         assert result.size == (2048, 512)
 
 
+def test_small_nid_image_is_upscaled_for_the_vision_encoder() -> None:
+    output = io.BytesIO()
+    Image.new("RGB", (400, 300), "white").save(output, format="PNG")
+    pages = render_document(output.getvalue(), "image/png", max_pages=2, max_dimension=2048, nid_mode=True)
+    with Image.open(io.BytesIO(pages[0].content)) as result:
+        assert result.size == (1200, 900)
+
+
 def test_pdf_is_rasterized_per_page() -> None:
     document = fitz.open()
     document.new_page()

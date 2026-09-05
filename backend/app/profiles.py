@@ -15,7 +15,7 @@ class ModelProfile:
     native_output: OutputFormat
 
 
-SURYA = ModelProfile("surya-ocr-2", ("datalab-to/surya-ocr-2",), 2048, 1536, "html")
+SURYA = ModelProfile("surya-ocr-2", ("datalab-to/surya-ocr-2",), 2048, 1024, "html")
 CHANDRA = ModelProfile("chandra-ocr-2", ("datalab-to/chandra-ocr-2", "datalab-to/chandra"), 4096, 2048, "html")
 DOTS = ModelProfile("dots-ocr", ("dots-studio/dots.ocr", "rednote-hilab/dots.ocr"), 2048, 1536, "json")
 GENERIC = ModelProfile("openai-compatible-vlm", (), 1536, 768, "text")

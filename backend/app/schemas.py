@@ -29,8 +29,9 @@ class OCRResult(BaseModel):
 
 class JobResponse(BaseModel):
     job_id: str
-    status: Literal["completed"] = "completed"
-    result: OCRResult
+    status: Literal["queued", "running", "completed", "failed", "cancelled"]
+    result: OCRResult | None = None
+    error: str | None = None
 
 
 class RuntimeResponse(BaseModel):
@@ -40,4 +41,3 @@ class RuntimeResponse(BaseModel):
     max_inference_concurrency: int
     max_upload_mib: int
     max_pdf_pages: int
-
