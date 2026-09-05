@@ -876,7 +876,26 @@ roughly 0.8 points per field — unless marked *full split*):
 | → repetition penalty 1.50 | 85.0% | Worse, and truncation returns (16/40). Not monotonic. |
 | penalty 1.30, preprocessing off | 87.5% | Preprocessing helps *once looping is fixed*. |
 | *full split*, all of the above | **86.8%** | 262 documents. The subset was optimistic by 4 points. |
-| *full split*, + name-row fixes | **87.5%** | name 76.3%, dob 93.5%, nid_no 92.8%. |
+| *full split*, + name-row fixes | **87.5%** | name 76.3%, dob 93.5%, nid_no 92.8%. Adopted. |
+| *full split*, + structural name fallback | 87.4% | **Tried and rejected — see below.** |
+
+**Rejected: unlabelled name recovery.** 52 of the remaining failures are fields
+where no labelled candidate validated, so an obvious next step is to fall back
+to the card's fixed layout — take the first all-caps Latin row above the date of
+birth, since the cardholder's name is printed there and a parent's name below
+it. That was implemented, gated behind a flag, and measured: **87.40% against
+87.53% without it.** No gain.
+
+The run also shows why a small difference proves nothing here. `dob` and
+`nid_no` moved by 0.4 points *between the two runs* even though the fallback
+cannot touch those fields — that is the model's own nondeterminism, and it is
+the same size as the effect being measured.
+
+The code was removed rather than left switched off. It relaxes *where* a value
+may come from, which is exactly the rule in **Explicit non-goals** #3, and a
+contract relaxation that buys nothing measurable is a liability rather than a
+dormant feature. Anyone reaching for this idea again should expect the label
+patterns, not the search region, to be where the remaining `missing` cases live.
 
 **Current standing.** 87.5% against a baseline that ranged 91.0–95.8%. The
 remaining gap is roughly 5 points on `dob` and `nid_no` and 14 points on `name`.
