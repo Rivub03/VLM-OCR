@@ -8,7 +8,7 @@ services:
     gpus: all
     environment:
       # Change ONLY this line, then run: docker compose up -d --build inference
-      OCR_MODEL_ID: datalab-to/surya-ocr-2 # alternative: dots-studio/dots.ocr
+      OCR_MODEL_ID: datalab-to/surya-ocr-2 # alternatives: dots-studio/dots.ocr, datalab-to/chandra-ocr-2
       OCR_VRAM_CAP_GIB: "18"
       # GB10/DGX Spark has UMA rather than reportable framebuffer VRAM. Leave
       # blank to derive the total from /proc/meminfo; set this only to override.
@@ -17,7 +17,7 @@ services:
       # inaccurate automatic cache sizing on GB10 unified-memory systems.
       OCR_KV_CACHE_MIB: "4096"
       OCR_ENFORCE_EAGER: "true"
-      OCR_MAX_MODEL_LEN: "4096"
+      OCR_MAX_MODEL_LEN: "8192"
       OCR_MAX_NUM_SEQS: "2"
       HF_HOME: /models
       HUGGINGFACE_HUB_CACHE: /models/hub
@@ -51,6 +51,7 @@ services:
       MAX_UPLOAD_MIB: "25"
       MAX_PDF_PAGES: "20"
       MAX_PAGE_DIMENSION: "2048"
+      UPSTREAM_TIMEOUT_SECONDS: "300"
       RESULT_TTL_SECONDS: "3600"
     depends_on:
       inference:

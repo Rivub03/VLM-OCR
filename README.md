@@ -24,10 +24,10 @@ If this fails, install/configure NVIDIA Container Toolkit on the host and restar
 The one model line in `docker-compose.yml` is:
 
 ```yaml
-OCR_MODEL_ID: datalab-to/surya-ocr-2 # alternative: dots-studio/dots.ocr
+OCR_MODEL_ID: datalab-to/surya-ocr-2 # alternatives: dots-studio/dots.ocr, datalab-to/chandra-ocr-2
 ```
 
-Change it to `dots-studio/dots.ocr`, then run `docker compose up -d --build inference`. The backend identifies the active model through `/v1/models` and applies the matching prompt/output profile. Model swapping is limited to OpenAI-compatible models supported by the selected engine.
+Change it to `dots-studio/dots.ocr` or `datalab-to/chandra-ocr-2`, then run `docker compose up -d --build inference`. The backend identifies the active model through `/v1/models` and applies the matching prompt/output profile: Surya uses its native full-page HTML contract, Chandra uses native HTML OCR, and dots uses text or JSON extraction prompts. Model swapping is limited to OpenAI-compatible models supported by the selected engine.
 
 vLLM is the default. To use SGLang with the same FastAPI/frontend contract:
 

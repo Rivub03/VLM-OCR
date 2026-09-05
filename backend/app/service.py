@@ -65,10 +65,13 @@ class OCRService:
             output = response.json()["choices"][0]["message"]["content"]
         except (KeyError, IndexError, TypeError, ValueError) as exc:
             raise UpstreamError("The OCR inference server returned an invalid response.") from exc
+        profile = profile_for(model)
         text, fields, warnings = parse_response(str(output))
         if mode.startswith("nid_") and not fields:
             warnings.append("Structured NID fields were derived from the single OCR transcription.")
-        fields = normalise_fields(fields, text, mode)
+        if mode == "schema" and profile.native_output == "html" and not fields:
+            warnings.append("This model uses native HTML OCR; custom fields were derived deterministically from the single transcription.")
+        fields = normalise_fields(fields, text, mode, schema)
         return PageResult(page_number=page.number, text=text, markdown=text, fields=fields, warnings=warnings)
 
     async def process(self, request_id: str, pages: list[RenderedPage], mode: str, schema: dict[str, Any] | None) -> OCRResult:

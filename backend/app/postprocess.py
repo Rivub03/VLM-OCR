@@ -1,5 +1,6 @@
 import json
 import re
+from html import unescape
 from typing import Any
 
 
@@ -14,8 +15,21 @@ def _strip_fences(value: str) -> str:
     return value.strip()
 
 
+def html_to_markdown(value: str) -> str:
+    """Convert constrained Surya/Chandra OCR HTML into readable text."""
+    value = re.sub(r"<(?:br)\s*/?>", "\n", value, flags=re.IGNORECASE)
+    value = re.sub(r"</(?:div|p|h[1-6]|li|tr)\s*>", "\n", value, flags=re.IGNORECASE)
+    value = re.sub(r"</(?:td|th)\s*>", " | ", value, flags=re.IGNORECASE)
+    value = re.sub(r"<[^>]+>", "", value)
+    value = unescape(value).replace("\r", "")
+    lines = [re.sub(r"[ \t]+", " ", line).strip(" |") for line in value.splitlines()]
+    return "\n".join(line for line in lines if line).strip()
+
+
 def parse_response(value: str) -> tuple[str, dict[str, Any] | None, list[str]]:
     clean = _strip_fences(value)
+    if re.search(r"<(?:div|p|table|h[1-6])\b", clean, flags=re.IGNORECASE):
+        return html_to_markdown(clean), None, []
     try:
         decoded = json.loads(clean)
     except json.JSONDecodeError:
@@ -53,8 +67,22 @@ def deterministic_nid_fields(text: str, mode: str) -> dict[str, Any]:
     return fields
 
 
-def normalise_fields(fields: dict[str, Any] | None, text: str, mode: str) -> dict[str, Any] | None:
+def deterministic_schema_fields(text: str, schema: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not schema:
+        return None
+    extracted: dict[str, Any] = {key: None for key in schema}
+    for key in schema:
+        label = re.escape(key.replace("_", " "))
+        match = re.search(rf"{label}\s*[:,-]?\s*([^\n]+)", text, re.IGNORECASE)
+        if match:
+            extracted[key] = match.group(1).strip()
+    return extracted
+
+
+def normalise_fields(fields: dict[str, Any] | None, text: str, mode: str, schema: dict[str, Any] | None = None) -> dict[str, Any] | None:
     extracted = deterministic_nid_fields(text, mode) if mode.startswith("nid_") else {}
+    if mode == "schema" and not fields:
+        extracted = deterministic_schema_fields(text, schema) or extracted
     if fields:
         extracted = {**fields, **{key: value for key, value in extracted.items() if value}}
     return extracted or None

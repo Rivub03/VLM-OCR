@@ -18,3 +18,9 @@ def test_regex_fields_do_not_replace_valid_model_field_with_empty_value() -> Non
     assert fields is not None
     assert fields["name"] == "Mina"
 
+
+def test_native_html_ocr_is_converted_to_readable_text() -> None:
+    text, fields, warnings = parse_response('<div data-label="Text"><p>Hello</p></div><div><p>World</p></div>')
+    assert text == "Hello\nWorld"
+    assert fields is None
+    assert warnings == []

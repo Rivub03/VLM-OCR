@@ -13,7 +13,7 @@ class Settings(BaseSettings):
     max_pdf_pages: int = 20
     max_page_dimension: int = 2048
     result_ttl_seconds: int = 3600
-    upstream_timeout_seconds: float = 120.0
+    upstream_timeout_seconds: float = 300.0
 
 
 @lru_cache
