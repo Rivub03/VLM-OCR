@@ -8,7 +8,7 @@ services:
     gpus: all
     environment:
       # Change ONLY this line, then run: docker compose up -d --build inference
-      OCR_MODEL_ID: datalab-to/surya-ocr-2 # alternatives: dots-studio/dots.ocr, datalab-to/chandra-ocr-2
+      OCR_MODEL_ID: dots-studio/dots.ocr # alternatives: dots-studio/dots.ocr, datalab-to/chandra-ocr-2
       OCR_VRAM_CAP_GIB: "18"
       # GB10/DGX Spark has UMA rather than reportable framebuffer VRAM. Leave
       # blank to derive the total from /proc/meminfo; set this only to override.
@@ -34,7 +34,11 @@ services:
               count: 1
               capabilities: [gpu]
     healthcheck:
-      test: ["CMD-SHELL", "python3 -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)\""]
+      test:
+        [
+          "CMD-SHELL",
+          'python3 -c "import urllib.request; urllib.request.urlopen(''http://localhost:8000/health'', timeout=3)"',
+        ]
       interval: 20s
       timeout: 5s
       # dots.ocr can take several minutes to download custom code and load its
@@ -62,7 +66,13 @@ services:
     ports:
       - "8000:8000"
     healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)",
+        ]
       interval: 15s
       timeout: 5s
       retries: 5
