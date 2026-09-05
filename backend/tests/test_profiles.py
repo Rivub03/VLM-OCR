@@ -15,6 +15,11 @@ def test_schema_prompt_keeps_the_requested_schema() -> None:
     assert payload["max_tokens"] == 1536
 
 
+def test_dots_nid_uses_ocr_only_prompt() -> None:
+    payload = make_payload("dots-studio/dots.ocr", "data:image/png;base64,AA==", "nid_front", None)
+    assert payload["messages"][0]["content"][0]["text"] == "Extract the text content from this image."
+
+
 def test_completion_tokens_leave_context_room_for_images() -> None:
     text_payload = make_payload("datalab-to/surya-ocr-2", "data:image/png;base64,AA==", "text", None)
     nid_payload = make_payload("datalab-to/surya-ocr-2", "data:image/png;base64,AA==", "nid_front", None)

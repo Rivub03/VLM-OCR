@@ -5,7 +5,7 @@ An internal, GPU-backed OCR application for printed JPEG, PNG, WEBP, and PDF doc
 ## Start
 
 1. Install Docker Compose with NVIDIA Container Toolkit on a Linux GPU host.
-2. Copy `.env.example` to `.env` and replace `OCR_API_KEY` with a long random secret.
+2. Copy `.env.example` to `.env`, replace `OCR_API_KEY` with a long random secret, and set `HF_TOKEN` to a newly issued Hugging Face read token. `.env` is ignored by Git; never put the token in Compose or source code.
 3. Run `docker compose up --build`.
 4. Open `http://localhost:3000`. The frontend proxies to FastAPI using the server-side key; direct API callers must supply `X-API-Key`.
 
@@ -24,7 +24,7 @@ If this fails, install/configure NVIDIA Container Toolkit on the host and restar
 The one model line in `docker-compose.yml` is:
 
 ```yaml
-OCR_MODEL_ID: datalab-to/surya-ocr-2 # alternatives: dots-studio/dots.ocr, datalab-to/chandra-ocr-2
+OCR_MODEL_ID: dots-studio/dots.ocr # alternatives: datalab-to/surya-ocr-2, datalab-to/chandra-ocr-2
 ```
 
 Change it to `dots-studio/dots.ocr` or `datalab-to/chandra-ocr-2`, then run `docker compose up -d --build inference`. The backend identifies the active model through `/v1/models` and applies the matching prompt/output profile: Surya uses its native full-page HTML contract, Chandra uses native HTML OCR, and dots uses text or JSON extraction prompts. Model swapping is limited to OpenAI-compatible models supported by the selected engine.
@@ -43,7 +43,7 @@ GB10's CUDA memory view is not a reliable fraction of its shared 128 GiB RAM, so
 
 `POST /api/v1/ocr` accepts `file`, `mode` (`text`, `nid_front`, `nid_back`, or `schema`), and optional `schema`. It blocks only until bounded-concurrency processing completes, then returns page results and model/timing metadata. The browser uses `POST /api/v1/jobs`, which immediately returns a job ID and status. Poll `GET /api/v1/jobs/{id}` for `queued`, `running`, `completed`, `failed`, or `cancelled`; send `DELETE /api/v1/jobs/{id}` to cancel an in-flight request. Cancellation closes the backend request to the inference server and frees the application concurrency slot; no source file is retained.
 
-For NID mode, small camera images are upscaled (up to 4×) before the one permitted OCR pass so the vision encoder receives legible character detail. Decoder output that starts looping is trimmed and marked with a warning rather than triggering a second inference. Upscaling cannot recover text that is absent from a very blurred or heavily compressed original: a close, in-focus image whose card fills most of the frame remains important for Bengali fields.
+For NID mode, small camera images receive one configurable local enhancement pass—upscaling, a white border, LAB CLAHE, and mild sharpening—before the one permitted OCR request. General documents and PDFs retain standard normalization. NID structured output is intentionally limited to English fields: front `name`, `dob`, and `nid_no`; back `blood_group`, `place_of_birth`, `issue_date`, and three MRZ lines. Every field is derived from the returned transcription and is `null` with a warning when it cannot be validated; the service does not infer missing values.
 
 Compatibility routes from the reference service remain available: `/direct`, `/direct/base64`, `/v1/ocr/schema`, and `/v1/ocr/results/{id}`.
 
@@ -52,10 +52,19 @@ Compatibility routes from the reference service remain available: `/direct`, `/d
 Run backend unit tests in a Python environment with `pip install -r backend/requirements.txt` followed by `cd backend && pytest`. A GPU is not required for the CPU-only container smoke stack:
 
 ```bash
-docker compose -f docker-compose.yml -f docker-compose.test.yml up --build
+HF_TOKEN=not-used OCR_API_KEY=local-test-key \
+  docker compose -f docker-compose.yml -f docker-compose.test.yml up --build
 ```
 
-For quality evaluation, store redacted pairs of `<name>.expected.json` and `<name>.actual.json` under a fixture folder, then run `python backend/scripts/evaluate.py fixtures/`. It reports character error rate and exact field-match rate; do not claim a production accuracy target until this is measured against representative English and Bengali documents.
+For NID quality evaluation, keep benchmark images and ground truth outside this repository, tune on `train`/`valid`, then run the held-out test once:
+
+```bash
+OCR_API_KEY=... python backend/scripts/evaluate_nid.py \
+  --benchmark-root /path/to/ocr-benchmark --type nid_front --split valid \
+  --output outputs/nid-front-valid.json
+```
+
+The report provides overall and per-field exact match, null rate, and false-positive counts. Do not claim a production accuracy target until validation reaches at least 99% exact match for supported non-empty English fields, blank fields produce zero false positives, and one held-out test run confirms the result.
 
 ## Security and retention
 

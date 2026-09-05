@@ -27,6 +27,9 @@ SURYA_BLOCK_PROMPT = "OCR this block image to HTML."
 CHANDRA_OCR_PROMPT = "OCR this image to HTML."
 DOTS_TEXT_PROMPT = "Extract the text content from this image."
 
+NID_FRONT_FIELDS = ("name", "dob", "nid_no")
+NID_BACK_FIELDS = ("blood_group", "place_of_birth", "issue_date", "mrz_line1", "mrz_line2", "mrz_line3")
+
 
 def profile_for(model_id: str) -> ModelProfile:
     normalized = model_id.lower()
@@ -36,13 +39,8 @@ def profile_for(model_id: str) -> ModelProfile:
     return GENERIC
 
 
-def _dots_structured_prompt(mode: str, schema: dict[str, Any] | None) -> str:
-    if mode == "nid_front":
-        fields: dict[str, Any] = {"name": None, "name_bn": None, "father_name": None, "mother_name": None, "dob": None, "nid_no": None}
-    elif mode == "nid_back":
-        fields = {"address_bn": None, "blood_group": None, "place_of_birth": None, "issue_date": None, "mrz_line1": None, "mrz_line2": None, "mrz_line3": None}
-    else:
-        fields = schema or {}
+def _dots_structured_prompt(schema: dict[str, Any] | None) -> str:
+    fields = schema or {}
     return (
         "Extract visible printed text from this document. Return one valid JSON object only, "
         "with `text` containing the complete reading-order transcription and `fields` matching "
@@ -62,7 +60,10 @@ def make_payload(model_id: str, image_data_url: str, mode: str, schema: dict[str
     elif profile is CHANDRA:
         prompt = CHANDRA_OCR_PROMPT
     elif profile is DOTS:
-        prompt = DOTS_TEXT_PROMPT if mode == "text" else _dots_structured_prompt(mode, schema)
+        # dots.ocr's documented prompt_ocr contract returns a faithful text
+        # transcription.  NID fields are derived locally from that evidence;
+        # requesting JSON directly has proven less reliable for these cards.
+        prompt = DOTS_TEXT_PROMPT if mode in {"text", "nid_front", "nid_back"} else _dots_structured_prompt(schema)
     else:
         prompt = "Perform OCR on this printed document. Return all visible text in reading order as Markdown. Do not infer missing characters."
         if mode == "schema" and schema:

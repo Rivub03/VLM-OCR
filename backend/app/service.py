@@ -7,7 +7,7 @@ from typing import Any
 import httpx
 
 from .config import Settings
-from .postprocess import normalise_fields, parse_response
+from .postprocess import extract_nid_fields, normalise_fields, parse_response
 from .preprocess import RenderedPage
 from .profiles import make_payload, profile_for
 from .schemas import OCRMetadata, OCRResult, PageResult
@@ -67,11 +67,17 @@ class OCRService:
             raise UpstreamError("The OCR inference server returned an invalid response.") from exc
         profile = profile_for(model)
         text, fields, warnings = parse_response(str(output))
-        if mode.startswith("nid_") and not fields:
-            warnings.append("Structured NID fields were derived from the single OCR transcription.")
+        warnings = [*page.warnings, *warnings]
+        if mode.startswith("nid_"):
+            # NID fields are never accepted directly from a VLM JSON response.
+            # Every emitted value must be located and validated in its raw OCR.
+            fields, field_warnings = extract_nid_fields(text, mode)
+            warnings.extend(field_warnings)
+            warnings.append("NID fields were derived from the single OCR transcription.")
         if mode == "schema" and profile.native_output == "html" and not fields:
             warnings.append("This model uses native HTML OCR; custom fields were derived deterministically from the single transcription.")
-        fields = normalise_fields(fields, text, mode, schema)
+        if not mode.startswith("nid_"):
+            fields = normalise_fields(fields, text, mode, schema)
         return PageResult(page_number=page.number, text=text, markdown=text, fields=fields, warnings=warnings)
 
     async def process(self, request_id: str, pages: list[RenderedPage], mode: str, schema: dict[str, Any] | None) -> OCRResult:

@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse
 from .cache import ResultCache
 from .config import Settings, get_settings
 from .jobs import JobManager
-from .preprocess import DocumentError, render_document
+from .preprocess import DocumentError, NidPreprocessOptions, render_document
 from .profiles import profile_for
 from .schemas import JobResponse, OCRResult, RuntimeResponse
 from .service import OCRService, UpstreamError
@@ -64,12 +64,22 @@ async def prepare_upload(file: UploadFile, mode: str, schema_raw: str | None) ->
         if not isinstance(schema, dict):
             raise HTTPException(status_code=422, detail="The extraction schema must be a JSON object.")
     try:
+        nid_options = NidPreprocessOptions(
+            enabled=settings.nid_preprocess_enabled,
+            min_short_edge=settings.nid_min_short_edge,
+            max_upscale=settings.nid_max_upscale,
+            border_px=settings.nid_border_px,
+            clahe_clip_limit=settings.nid_clahe_clip_limit,
+            clahe_tile_grid_size=settings.nid_clahe_tile_grid_size,
+            unsharp_amount=settings.nid_unsharp_amount,
+        )
         pages = render_document(
             content,
             file.content_type,
             settings.max_pdf_pages,
             settings.max_page_dimension,
             nid_mode=mode.startswith("nid_"),
+            nid_options=nid_options,
         )
     except DocumentError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc

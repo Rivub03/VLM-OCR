@@ -5,6 +5,8 @@ from typing import Any
 
 
 BN_TO_EN = str.maketrans("০১২৩৪৫৬৭৮৯", "0123456789")
+NID_FRONT_FIELDS = ("name", "dob", "nid_no")
+NID_BACK_FIELDS = ("blood_group", "place_of_birth", "issue_date", "mrz_line1", "mrz_line2", "mrz_line3")
 
 
 def _strip_fences(value: str) -> str:
@@ -71,26 +73,79 @@ def parse_response(value: str) -> tuple[str, dict[str, Any] | None, list[str]]:
     return text or clean, fields, []
 
 
-def deterministic_nid_fields(text: str, mode: str) -> dict[str, Any]:
-    normalized = text.translate(BN_TO_EN)
-    fields: dict[str, Any] = {}
-    nid_match = re.search(r"(?<!\d)(?:\d[\s-]*){10,17}(?!\d)", normalized)
-    if nid_match:
-        candidate = re.sub(r"[\s-]", "", nid_match.group())
-        if len(candidate) in {10, 13, 17}:
-            fields["nid_no"] = candidate
-    dob_match = re.search(r"(?:date\s*of\s*birth|dob|জন্ম\s*তারিখ)\s*[:,-]?\s*([^\n]+)", normalized, re.IGNORECASE)
-    if dob_match:
-        fields["dob"] = dob_match.group(1).strip()
-    blood_match = re.search(r"(?:blood\s*group|bg|রক্তের\s*গ্রুপ)\s*[:,-]?\s*(A|B|AB|O)\s*([+-])", normalized, re.IGNORECASE)
-    if blood_match:
-        fields["blood_group"] = blood_match.group(1).upper() + blood_match.group(2)
+def _lines(text: str) -> list[str]:
+    return [re.sub(r"\s+", " ", line).strip() for line in text.translate(BN_TO_EN).splitlines() if line.strip()]
+
+
+def _label_value(lines: list[str], label: str, validator) -> str | None:
+    expression = re.compile(rf"^{label}\s*[:,-]?\s*(.*)$", re.IGNORECASE)
+    for index, line in enumerate(lines):
+        match = expression.search(line)
+        if not match:
+            continue
+        candidates = [match.group(1).strip()]
+        if index + 1 < len(lines):
+            candidates.append(lines[index + 1].strip())
+        for candidate in candidates:
+            if candidate and validator(candidate):
+                return candidate
+    return None
+
+
+def _valid_name(value: str) -> bool:
+    return bool(re.fullmatch(r"[A-Za-z][A-Za-z .'-]{1,80}", value)) and not re.fullmatch(r"(?:print|address|date of birth|nid no\.?)", value, re.IGNORECASE)
+
+
+def _extract_date(value: str) -> str | None:
+    match = re.search(r"\b\d{1,2}\s+(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[A-Za-z]*\s+\d{4}\b", value, re.IGNORECASE)
+    if not match:
+        match = re.search(r"\b\d{1,2}[/-]\d{1,2}[/-]\d{4}\b", value)
+    return match.group(0) if match else None
+
+
+def _extract_nid(value: str) -> str | None:
+    match = re.search(r"(?<!\d)(?:\d[\s-]*){10,17}(?!\d)", value)
+    if not match:
+        return None
+    candidate = re.sub(r"[\s-]", "", match.group())
+    return candidate if len(candidate) in {10, 13, 17} else None
+
+
+def _extract_mrz(lines: list[str]) -> list[str] | None:
+    candidates = [re.sub(r"\s+", "", line) for line in lines]
+    candidates = [line for line in candidates if re.fullmatch(r"[A-Z0-9<]{20,44}", line)]
+    return candidates[-3:] if len(candidates) >= 3 else None
+
+
+def extract_nid_fields(text: str, mode: str) -> tuple[dict[str, Any], list[str]]:
+    """Extract only supported English NID fields with source-text evidence."""
+    lines = _lines(text)
+    keys = NID_FRONT_FIELDS if mode == "nid_front" else NID_BACK_FIELDS
+    fields: dict[str, Any] = {key: None for key in keys}
     if mode == "nid_front":
-        for field, label in (("name", "name"), ("father_name", r"father'?s?\s+name"), ("mother_name", r"mother'?s?\s+name")):
-            match = re.search(rf"{label}\s*[:,-]?\s*([^\n]+)", text, re.IGNORECASE)
-            if match:
-                fields[field] = match.group(1).strip()
-    return fields
+        fields["name"] = _label_value(lines, r"name", _valid_name)
+        fields["dob"] = _label_value(lines, r"(?:date\s*of\s*birth|dob)", lambda value: _extract_date(value) is not None)
+        if fields["dob"]:
+            fields["dob"] = _extract_date(fields["dob"])
+        fields["nid_no"] = _label_value(lines, r"(?:nid\s*(?:no\.?|number)?)", lambda value: _extract_nid(value) is not None)
+        if fields["nid_no"]:
+            fields["nid_no"] = _extract_nid(fields["nid_no"])
+    else:
+        blood = _label_value(lines, r"(?:blood\s*group|bg)", lambda value: bool(re.fullmatch(r"(?:A|B|AB|O)\s*[+-]", value, re.IGNORECASE)))
+        fields["blood_group"] = re.sub(r"\s+", "", blood).upper() if blood else None
+        fields["place_of_birth"] = _label_value(lines, r"(?:place\s*of\s*birth|birth\s*place)", _valid_name)
+        issue_date = _label_value(lines, r"(?:issue\s*date|date\s*of\s*issue)", lambda value: _extract_date(value) is not None)
+        fields["issue_date"] = _extract_date(issue_date) if issue_date else None
+        mrz = _extract_mrz(lines)
+        if mrz:
+            fields.update(dict(zip(("mrz_line1", "mrz_line2", "mrz_line3"), mrz, strict=True)))
+    warnings = [f"{key} could not be validated from the OCR transcription and was returned as null." for key, value in fields.items() if value is None]
+    return fields, warnings
+
+
+def deterministic_nid_fields(text: str, mode: str) -> dict[str, Any]:
+    """Compatibility wrapper for callers that only require fixed NID fields."""
+    return extract_nid_fields(text, mode)[0]
 
 
 def deterministic_schema_fields(text: str, schema: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -106,7 +161,7 @@ def deterministic_schema_fields(text: str, schema: dict[str, Any] | None) -> dic
 
 
 def normalise_fields(fields: dict[str, Any] | None, text: str, mode: str, schema: dict[str, Any] | None = None) -> dict[str, Any] | None:
-    extracted = deterministic_nid_fields(text, mode) if mode.startswith("nid_") else {}
+    extracted: dict[str, Any] = {}
     if mode == "schema" and not fields:
         extracted = deterministic_schema_fields(text, schema) or extracted
     if fields:

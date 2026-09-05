@@ -6,6 +6,6 @@ python-multipart==0.0.22
 Pillow==12.1.0
 PyMuPDF==1.25.3
 orjson==3.10.15
+opencv-python-headless==4.13.0.92
 pytest==8.3.4
 pytest-asyncio==0.25.3
-

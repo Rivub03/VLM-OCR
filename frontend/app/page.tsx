@@ -17,10 +17,10 @@ type OCRResult = { status: "completed"; result: PageResult[]; metadata: { reques
 type JobResponse = { job_id: string; status: "queued" | "running" | "completed" | "failed" | "cancelled"; result?: OCRResult; error?: string; detail?: string };
 
 const NID_FRONT = JSON.stringify({
-  name: "Full name in English", name_bn: "Full name in Bangla", father_name: "Father's name", mother_name: "Mother's name", dob: "Date of birth", nid_no: "NID number",
+  name: "Full name in English", dob: "Date of birth", nid_no: "NID number",
 }, null, 2);
 const NID_BACK = JSON.stringify({
-  address_bn: "Address in Bangla", blood_group: "Blood group", place_of_birth: "Place of birth", issue_date: "Issue date", mrz_line1: "MRZ line 1", mrz_line2: "MRZ line 2", mrz_line3: "MRZ line 3",
+  blood_group: "Blood group", place_of_birth: "Place of birth", issue_date: "Issue date", mrz_line1: "MRZ line 1", mrz_line2: "MRZ line 2", mrz_line3: "MRZ line 3",
 }, null, 2);
 
 function formatMs(value: number) {

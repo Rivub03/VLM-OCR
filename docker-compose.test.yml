@@ -9,3 +9,5 @@ services:
         reservations:
           devices: []
     ipc: private
+    environment:
+      HF_TOKEN: ""

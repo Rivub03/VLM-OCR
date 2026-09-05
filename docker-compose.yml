@@ -21,6 +21,7 @@ services:
       OCR_MAX_NUM_SEQS: "2"
       HF_HOME: /models
       HUGGINGFACE_HUB_CACHE: /models/hub
+      HF_TOKEN: ${HF_TOKEN:?set HF_TOKEN in .env}
       NVIDIA_VISIBLE_DEVICES: all
       NVIDIA_DRIVER_CAPABILITIES: compute,utility
     volumes:
@@ -60,6 +61,13 @@ services:
       MAX_PAGE_DIMENSION: "2048"
       UPSTREAM_TIMEOUT_SECONDS: "300"
       RESULT_TTL_SECONDS: "3600"
+      NID_PREPROCESS_ENABLED: "true"
+      NID_MIN_SHORT_EDGE: "900"
+      NID_MAX_UPSCALE: "4"
+      NID_BORDER_PX: "20"
+      NID_CLAHE_CLIP_LIMIT: "2.0"
+      NID_CLAHE_TILE_GRID_SIZE: "8"
+      NID_UNSHARP_AMOUNT: "0.20"
     depends_on:
       inference:
         condition: service_healthy

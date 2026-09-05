@@ -14,6 +14,13 @@ class Settings(BaseSettings):
     max_page_dimension: int = 2048
     result_ttl_seconds: int = 3600
     upstream_timeout_seconds: float = 300.0
+    nid_preprocess_enabled: bool = True
+    nid_min_short_edge: int = 900
+    nid_max_upscale: float = 4.0
+    nid_border_px: int = 20
+    nid_clahe_clip_limit: float = 2.0
+    nid_clahe_tile_grid_size: int = 8
+    nid_unsharp_amount: float = 0.20
 
 
 @lru_cache

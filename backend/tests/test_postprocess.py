@@ -1,4 +1,4 @@
-from app.postprocess import deterministic_nid_fields, normalise_fields, parse_response
+from app.postprocess import deterministic_nid_fields, extract_nid_fields, normalise_fields, parse_response
 
 
 def test_bangla_nid_digits_are_normalised() -> None:
@@ -39,3 +39,31 @@ def test_layout_metadata_is_never_treated_as_ocr_or_nid_data() -> None:
     assert text == ""
     assert fields is None
     assert "layout metadata" in warnings[0]
+
+
+def test_front_fields_are_label_aware_and_use_the_next_english_line() -> None:
+    fields, warnings = extract_nid_fields("Name\nMST. KOHINUR BEGUM\nDate of Birth 28 Oct 1983\nNID No. 370 809 0620", "nid_front")
+    assert fields == {"name": "MST. KOHINUR BEGUM", "dob": "28 Oct 1983", "nid_no": "3708090620"}
+    assert warnings == []
+
+
+def test_back_fields_keep_blank_blood_group_null_and_preserve_mrz() -> None:
+    text = """Blood Group:
+Place of Birth: JHENAIDAH
+Issue Date: 15 Jan 2018
+I<BGD464633509<39<<<<<<<<<
+6401182M3301144BGD<<<<<<<<<2
+HAQUE<<MD<IZAZUL<<<<<<<<<"""
+    fields, warnings = extract_nid_fields(text, "nid_back")
+    assert fields["blood_group"] is None
+    assert fields["place_of_birth"] == "JHENAIDAH"
+    assert fields["issue_date"] == "15 Jan 2018"
+    assert fields["mrz_line1"] == "I<BGD464633509<39<<<<<<<<<"
+    assert fields["mrz_line3"] == "HAQUE<<MD<IZAZUL<<<<<<<<<"
+    assert any("blood_group" in warning for warning in warnings)
+
+
+def test_invalid_mrz_is_not_emitted() -> None:
+    fields, warnings = extract_nid_fields("Place of Birth: JHENAIDAH\nABCD<INVALID", "nid_back")
+    assert fields["mrz_line1"] is None
+    assert any("mrz_line1" in warning for warning in warnings)

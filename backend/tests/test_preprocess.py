@@ -3,7 +3,7 @@ import io
 import fitz
 from PIL import Image
 
-from app.preprocess import DocumentError, render_document
+from app.preprocess import DocumentError, NidPreprocessOptions, render_document
 
 
 def image_bytes() -> bytes:
@@ -31,7 +31,26 @@ def test_small_nid_image_is_upscaled_for_the_vision_encoder() -> None:
     Image.new("RGB", (400, 300), "white").save(output, format="PNG")
     pages = render_document(output.getvalue(), "image/png", max_pages=2, max_dimension=2048, nid_mode=True)
     with Image.open(io.BytesIO(pages[0].content)) as result:
-        assert result.size == (1200, 900)
+        assert result.size == (1240, 940)
+
+
+def test_non_nid_image_does_not_receive_nid_border_or_clahe() -> None:
+    output = io.BytesIO()
+    Image.new("RGB", (400, 300), "white").save(output, format="PNG")
+    pages = render_document(output.getvalue(), "image/png", max_pages=2, max_dimension=2048, nid_mode=False)
+    with Image.open(io.BytesIO(pages[0].content)) as result:
+        assert result.size == (400, 300)
+
+
+def test_nid_enhancement_falls_back_to_standard_normalization(monkeypatch) -> None:
+    output = io.BytesIO()
+    Image.new("RGB", (400, 300), "white").save(output, format="PNG")
+    monkeypatch.setattr("app.preprocess._enhance_nid", lambda *args: (_ for _ in ()).throw(RuntimeError("CV failure")))
+    pages = render_document(
+        output.getvalue(), "image/png", max_pages=2, max_dimension=2048, nid_mode=True, nid_options=NidPreprocessOptions(),
+    )
+    assert pages[0].warnings
+    assert pages[0].content.startswith(b"\x89PNG")
 
 
 def test_pdf_is_rasterized_per_page() -> None:
