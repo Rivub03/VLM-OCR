@@ -24,6 +24,8 @@ def test_completion_tokens_leave_context_room_for_images() -> None:
 
 def test_native_html_models_use_documented_ocr_prompts() -> None:
     surya = make_payload("datalab-to/surya-ocr-2", "data:image/png;base64,AA==", "nid_front", None)
+    surya_document = make_payload("datalab-to/surya-ocr-2", "data:image/png;base64,AA==", "text", None)
     chandra = make_payload("datalab-to/chandra-ocr-2", "data:image/png;base64,AA==", "text", None)
-    assert surya["messages"][0]["content"][0]["text"].startswith("OCR this image to HTML. Each block")
+    assert surya["messages"][0]["content"][0]["text"] == "OCR this block image to HTML."
+    assert surya_document["messages"][0]["content"][0]["text"].startswith("OCR this image to HTML. Each block")
     assert chandra["messages"][0]["content"][0]["text"] == "OCR this image to HTML."

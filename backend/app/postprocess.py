@@ -56,6 +56,10 @@ def parse_response(value: str) -> tuple[str, dict[str, Any] | None, list[str]]:
         decoded = json.loads(clean)
     except json.JSONDecodeError:
         return clean, None, []
+    if isinstance(decoded, list) and all(isinstance(item, dict) and {"label", "bbox", "count"}.issubset(item) for item in decoded):
+        return "", None, [
+            "The model returned document-layout metadata rather than OCR text. No fields were extracted; retry this NID after updating the service or use the dots.ocr model profile."
+        ]
     if not isinstance(decoded, dict):
         return clean, None, ["The model returned JSON in an unexpected shape."]
     text = str(decoded.get("text") or decoded.get("markdown") or decoded.get("content") or "")

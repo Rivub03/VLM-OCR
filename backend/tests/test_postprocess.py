@@ -32,3 +32,10 @@ def test_repeated_native_ocr_output_is_trimmed_with_a_warning() -> None:
     assert text == "National ID Card\nNational ID Card"
     assert fields is None
     assert warnings
+
+
+def test_layout_metadata_is_never_treated_as_ocr_or_nid_data() -> None:
+    text, fields, warnings = parse_response('[{"label":"Text","bbox":"1 2 3 4","count":20}]')
+    assert text == ""
+    assert fields is None
+    assert "layout metadata" in warnings[0]

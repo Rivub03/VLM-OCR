@@ -23,6 +23,7 @@ GENERIC = ModelProfile("openai-compatible-vlm", (), 1536, 768, "text")
 # These strings are the models' documented task contracts. Surya distinguishes
 # layout JSON from full-page HTML solely by this exact prompt.
 SURYA_FULL_PAGE_PROMPT = "OCR this image to HTML. Each block is a div with data-label and data-bbox (x0 y0 x1 y1, normalized 0-1000)."
+SURYA_BLOCK_PROMPT = "OCR this block image to HTML."
 CHANDRA_OCR_PROMPT = "OCR this image to HTML."
 DOTS_TEXT_PROMPT = "Extract the text content from this image."
 
@@ -54,7 +55,10 @@ def make_payload(model_id: str, image_data_url: str, mode: str, schema: dict[str
     profile = profile_for(model_id)
     max_tokens = profile.structured_max_tokens if mode != "text" else profile.text_max_tokens
     if profile is SURYA:
-        prompt = SURYA_FULL_PAGE_PROMPT
+        # A NID is a single dense card rather than a multi-block document. The
+        # block contract prevents Surya from returning layout-only JSON for a
+        # card, while retaining one OCR request for its complete image.
+        prompt = SURYA_BLOCK_PROMPT if mode.startswith("nid_") else SURYA_FULL_PAGE_PROMPT
     elif profile is CHANDRA:
         prompt = CHANDRA_OCR_PROMPT
     elif profile is DOTS:

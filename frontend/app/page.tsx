@@ -36,6 +36,7 @@ export default function Home() {
   const [runtime, setRuntime] = useState<Runtime | null>(null);
   const [error, setError] = useState("");
   const [processing, setProcessing] = useState(false);
+  const [copied, setCopied] = useState(false);
   const activeJob = useRef<string | null>(null);
   const cancelled = useRef(false);
   const [tab, setTab] = useState<"text" | "markdown" | "json">("text");
@@ -109,6 +110,30 @@ export default function Home() {
     setError("OCR request cancelled.");
   };
   const combinedText = useMemo(() => result?.result.map(page => page.text).join("\n\n") ?? "", [result]);
+  const copyText = async () => {
+    try {
+      let didCopy = false;
+      if (navigator.clipboard?.writeText) {
+        try { await navigator.clipboard.writeText(combinedText); didCopy = true; }
+        catch { /* HTTP and restrictive browser policies often reject this API. */ }
+      }
+      if (!didCopy) {
+        const input = document.createElement("textarea");
+        try {
+          input.value = combinedText;
+          input.style.position = "fixed";
+          input.style.opacity = "0";
+          document.body.appendChild(input);
+          input.focus(); input.select();
+          if (!document.execCommand("copy")) throw new Error("Copy command was rejected.");
+        } finally { input.remove(); }
+      }
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      setError("Copy was blocked by the browser. Select the text and copy it manually.");
+    }
+  };
   const download = (extension: "txt" | "md" | "json") => {
     if (!result) return;
     const content = extension === "json" ? JSON.stringify(result, null, 2) : combinedText;
@@ -137,7 +162,7 @@ export default function Home() {
         </div>
         <div className="card result-card">
           <div className="section-heading"><div><p className="eyebrow">OUTPUT</p><h2>{result ? "Extraction complete" : "Waiting for a document"}</h2></div>{result && <div className="downloads"><button onClick={() => download("txt")}>.txt</button><button onClick={() => download("md")}>.md</button><button onClick={() => download("json")}>.json</button></div>}</div>
-          {!result ? <div className="empty"><span>⌁</span><strong>{processing ? "Reading your document" : "Results will appear here"}</strong><p>{processing ? "The server is processing each page once with bounded concurrency." : "Choose a document and begin extraction."}</p></div> : <><div className="tabs"><button className={tab === "text" ? "selected" : ""} onClick={() => setTab("text")}>Text</button><button className={tab === "markdown" ? "selected" : ""} onClick={() => setTab("markdown")}>Markdown</button><button className={tab === "json" ? "selected" : ""} onClick={() => setTab("json")}>JSON</button><button className="copy" onClick={() => navigator.clipboard.writeText(combinedText)}>Copy</button></div><div className="result-body">{tab === "json" ? <pre>{JSON.stringify(result, null, 2)}</pre> : <>{result.result.map(page => <article className="page-result" key={page.page_number}><p className="page-label">PAGE {page.page_number}</p><pre>{tab === "text" ? page.text : page.markdown}</pre>{page.fields && <div className="fields"><p className="page-label">EXTRACTED FIELDS</p>{Object.entries(page.fields).map(([key, value]) => <div key={key}><span>{key.replaceAll("_", " ")}</span><strong>{String(value ?? "—")}</strong></div>)}</div>}{page.warnings.map(warning => <p className="warning" key={warning}>{warning}</p>)}</article>)}</>}</div><footer className="result-footer"><span>{result.metadata.model}</span><span>{result.metadata.page_count} page{result.metadata.page_count === 1 ? "" : "s"}</span><span>{formatMs(result.metadata.elapsed_ms)}</span></footer></>}
+          {!result ? <div className="empty"><span>⌁</span><strong>{processing ? "Reading your document" : "Results will appear here"}</strong><p>{processing ? "The server is processing each page once with bounded concurrency." : "Choose a document and begin extraction."}</p></div> : <><div className="tabs"><button className={tab === "text" ? "selected" : ""} onClick={() => setTab("text")}>Text</button><button className={tab === "markdown" ? "selected" : ""} onClick={() => setTab("markdown")}>Markdown</button><button className={tab === "json" ? "selected" : ""} onClick={() => setTab("json")}>JSON</button><button className="copy" onClick={copyText}>{copied ? "Copied" : "Copy"}</button></div><div className="result-body">{tab === "json" ? <pre>{JSON.stringify(result, null, 2)}</pre> : <>{result.result.map(page => <article className="page-result" key={page.page_number}><p className="page-label">PAGE {page.page_number}</p><pre>{tab === "text" ? page.text : page.markdown}</pre>{page.fields && <div className="fields"><p className="page-label">EXTRACTED FIELDS</p>{Object.entries(page.fields).map(([key, value]) => <div key={key}><span>{key.replaceAll("_", " ")}</span><strong>{String(value ?? "—")}</strong></div>)}</div>}{page.warnings.map(warning => <p className="warning" key={warning}>{warning}</p>)}</article>)}</>}</div><footer className="result-footer"><span>{result.metadata.model}</span><span>{result.metadata.page_count} page{result.metadata.page_count === 1 ? "" : "s"}</span><span>{formatMs(result.metadata.elapsed_ms)}</span></footer></>}
         </div>
       </section>
       <footer className="privacy">Uploaded source files are discarded after processing. Direct results remain in memory only for one hour and are cleared when the service restarts.</footer>
