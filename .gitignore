@@ -49,6 +49,13 @@ docker-compose.local.yml
 secure-uploads/
 /secure-uploads/
 
+# ── Benchmark output ──────────────────────────────────────────────────────────
+# evaluate_nid.py reports embed transcribed identity-card fields verbatim, and
+# benchmark corpora belong outside this repository entirely.
+benchmark-results/
+/benchmark-results/
+outputs/
+
 # ── Compiled / build output ───────────────────────────────────────────────────
 dist/
 build/

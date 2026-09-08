@@ -16,8 +16,16 @@ services:
       # Explicitly bound persistent cache allocation. This avoids vLLM's
       # inaccurate automatic cache sizing on GB10 unified-memory systems.
       OCR_KV_CACHE_MIB: "4096"
-      OCR_ENFORCE_EAGER: "true"
-      OCR_MAX_MODEL_LEN: "8192"
+      # CUDA graphs are worth roughly 2-4x on decode. Eager mode was a
+      # memory workaround; the server reports ~58 GiB free at startup, so it is
+      # only costing throughput. Set back to "true" if startup memory regresses.
+      OCR_ENFORCE_EAGER: "false"
+      # The model supports 131072 positions. 8192 left a full-page image within
+      # ~700 tokens of the limit, where vLLM rejects the request and the whole
+      # page fails. The allocated KV cache holds ~149k tokens, so this is free.
+      OCR_MAX_MODEL_LEN: "24576"
+      # Must match MAX_IMAGE_TOKENS on the backend.
+      OCR_MAX_IMAGE_TOKENS: "8464"
       OCR_MAX_NUM_SEQS: "2"
       HF_HOME: /models
       HUGGINGFACE_HUB_CACHE: /models/hub
@@ -58,16 +66,44 @@ services:
       MAX_INFERENCE_CONCURRENCY: "2"
       MAX_UPLOAD_MIB: "25"
       MAX_PDF_PAGES: "20"
-      MAX_PAGE_DIMENSION: "2048"
+      MAX_PAGE_DIMENSION: "2560"
+      # PDFs were rendered at a fixed 2x matrix, i.e. 144 dpi, which is thin for
+      # small print. The token budget below caps the result either way.
+      MAX_PDF_DPI: "200"
       UPSTREAM_TIMEOUT_SECONDS: "300"
       RESULT_TTL_SECONDS: "3600"
+      # Keep in step with OCR_MAX_MODEL_LEN above: the backend sizes every page
+      # so image tokens plus generated tokens cannot overflow the served context.
+      MAX_MODEL_LEN: "24576"
+      TOKEN_BUDGET_MARGIN: "6144"
+      UPSTREAM_MAX_ATTEMPTS: "3"
+      # Documents use dots.ocr's layout task (tables, captions, reading order).
+      # Cards use its plain OCR task: measured on the NID front train split, the
+      # layout task collapses a card into run-on lines and loops on dense ones.
+      DOTS_LAYOUT_PROMPT_ENABLED: "true"
+      NID_LAYOUT_PROMPT_ENABLED: "false"
+      # Anti-repetition sampling, tuned per document kind. On the NID front
+      # train split, 1.30 took truncating pages from 14/40 to 0/40 and accuracy
+      # from 86.7% to 90.8%; 1.50 was worse than both. The back stays at 1.05
+      # because its MRZ contains long runs of '<' that are legitimately
+      # repetitive and a token-level penalty shortens them.
+      REPETITION_PENALTY: "1.05"
+      NID_FRONT_REPETITION_PENALTY: "1.30"
+      NID_BACK_REPETITION_PENALTY: "1.05"
       NID_PREPROCESS_ENABLED: "true"
+      NID_RECTIFY_ENABLED: "true"
+      NID_ILLUMINATION_ENABLED: "true"
+      NID_DESKEW_ENABLED: "true"
+      NID_TARGET_LONG_EDGE: "1600"
       NID_MIN_SHORT_EDGE: "900"
       NID_MAX_UPSCALE: "4"
       NID_BORDER_PX: "20"
       NID_CLAHE_CLIP_LIMIT: "2.0"
       NID_CLAHE_TILE_GRID_SIZE: "8"
       NID_UNSHARP_AMOUNT: "0.20"
+      # CPU-only second opinion for fields that fail validation. No GPU cost.
+      NID_VERIFY_ENABLED: "true"
+      NID_SECOND_PASS_ENABLED: "false"
     depends_on:
       inference:
         condition: service_healthy

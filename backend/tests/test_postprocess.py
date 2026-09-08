@@ -58,8 +58,12 @@ HAQUE<<MD<IZAZUL<<<<<<<<<"""
     assert fields["blood_group"] is None
     assert fields["place_of_birth"] == "JHENAIDAH"
     assert fields["issue_date"] == "15 Jan 2018"
-    assert fields["mrz_line1"] == "I<BGD464633509<39<<<<<<<<<"
-    assert fields["mrz_line3"] == "HAQUE<<MD<IZAZUL<<<<<<<<<"
+    # MRZ rows are restored to the thirty characters TD1 mandates. The fixture
+    # above is a shortened transcription of a real card; padding the filler runs
+    # reconstructs it exactly, which the check digits then confirm.
+    assert fields["mrz_line1"] == "I<BGD464633509<39<<<<<<<<<<<<<"
+    assert fields["mrz_line3"] == "HAQUE<<MD<IZAZUL<<<<<<<<<<<<<<"
+    assert all(len(fields[key]) == 30 for key in ("mrz_line1", "mrz_line2", "mrz_line3"))
     assert any("blood_group" in warning for warning in warnings)
 
 
@@ -72,7 +76,7 @@ BEGUM<<RUZINA<<<<<<<<<<<<<<<<"""
     assert fields["blood_group"] is None
     assert fields["place_of_birth"] == "CHANDPUR"
     assert fields["issue_date"] == "16 Jan 2018"
-    assert fields["mrz_line1"] == "I<BGD509688789<79<<<<<<<<<<"
+    assert fields["mrz_line1"] == "I<BGD509688789<79<<<<<<<<<<<<<"
     assert any("blood_group" in warning for warning in warnings)
 
 

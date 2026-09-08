@@ -7,5 +7,10 @@ Pillow==12.1.0
 PyMuPDF==1.25.3
 orjson==3.10.15
 opencv-python-headless==4.13.0.92
+# CPU-only second-opinion OCR for NID fields that fail validation. Pinned to the
+# 1.x line because it ships its PP-OCR ONNX models inside the wheel; rapidocr 3.x
+# downloads them on first use, which would break an offline container build.
+rapidocr-onnxruntime==1.4.4
+onnxruntime==1.29.0
 pytest==8.3.4
 pytest-asyncio==0.25.3

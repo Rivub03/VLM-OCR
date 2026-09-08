@@ -5,12 +5,27 @@ from pydantic import BaseModel, Field
 DocumentMode = Literal["text", "nid_front", "nid_back", "schema"]
 
 
+class LayoutBlockModel(BaseModel):
+    """One layout element as reported by the model's layout task."""
+
+    category: str
+    text: str = ""
+    bbox: list[float] | None = None
+
+
 class PageResult(BaseModel):
     page_number: int
     text: str
     markdown: str
     fields: dict[str, Any] | None = None
     warnings: list[str] = Field(default_factory=list)
+    # Additive: absent for models and prompts that return no layout information.
+    layout: list[LayoutBlockModel] | None = None
+    # How well each extracted field is supported by the transcription, so a
+    # caller can triage rather than treating every value as equally certain.
+    field_confidence: dict[str, float] | None = None
+    field_evidence: dict[str, Any] | None = None
+    finish_reason: str | None = None
 
 
 class OCRMetadata(BaseModel):
@@ -19,6 +34,8 @@ class OCRMetadata(BaseModel):
     serving_engine: str
     page_count: int
     elapsed_ms: int
+    image_tokens: int | None = None
+    failed_pages: int = 0
 
 
 class OCRResult(BaseModel):

@@ -5,9 +5,14 @@ set -euo pipefail
 : "${OCR_VRAM_CAP_GIB:=18}"
 : "${OCR_UMA_TOTAL_MEMORY_GIB:=}"
 : "${OCR_KV_CACHE_MIB:=4096}"
-: "${OCR_ENFORCE_EAGER:=true}"
-: "${OCR_MAX_MODEL_LEN:=8192}"
+: "${OCR_ENFORCE_EAGER:=false}"
+: "${OCR_MAX_MODEL_LEN:=24576}"
 : "${OCR_MAX_NUM_SEQS:=4}"
+# Upper bound on image tokens the backend may send. dots.ocr's own preprocessor
+# allows max_pixels=11289600, roughly 14400 tokens, which overflows the served
+# context and makes vLLM reject the request outright. This is a server-side
+# backstop; backend/app/preprocess.py sizes pages against the same figure.
+: "${OCR_MAX_IMAGE_TOKENS:=8464}"
 
 if ! [[ "${OCR_KV_CACHE_MIB}" =~ ^[0-9]+$ ]] || (( OCR_KV_CACHE_MIB < 256 )); then
   echo "OCR_KV_CACHE_MIB must be a whole number of at least 256 MiB." >&2
@@ -61,6 +66,9 @@ fi
 
 echo "Serving ${OCR_MODEL_ID} with vLLM on ${gpu_name}; KV cache=${OCR_KV_CACHE_MIB} MiB, GPU fraction=${gpu_fraction} (ignored with explicit cache), memory source=${memory_source}"
 
+# One image token covers a 28x28 pixel cell (patch 14, spatial merge 2).
+max_pixels=$((OCR_MAX_IMAGE_TOKENS * 28 * 28))
+
 vllm_args=(
   serve "${OCR_MODEL_ID}"
   --host 0.0.0.0
@@ -74,6 +82,7 @@ vllm_args=(
   --max-num-seqs "${OCR_MAX_NUM_SEQS}"
   --max-num-batched-tokens "${OCR_MAX_MODEL_LEN}"
   --limit-mm-per-prompt '{"image": 1}'
+  --mm-processor-kwargs "{\"max_pixels\": ${max_pixels}}"
 )
 if [[ "${OCR_ENFORCE_EAGER}" == "true" ]]; then
   vllm_args+=(--enforce-eager)
